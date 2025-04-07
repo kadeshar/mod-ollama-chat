@@ -4,6 +4,11 @@
 # mod-ollama-chat configuration
 ########################################
 
+# OllamaChat.Enable
+#     Description: Enable or disable the module.
+#     Default:     1 (true)
+OllamaChat.Enable = 1
+
 # OllamaChat.SayDistance
 #     Description: The maximum distance (in game units) a bot must be within to reply on a Say message.
 #     Default:     30.0

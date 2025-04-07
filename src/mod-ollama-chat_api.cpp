@@ -1,7 +1,9 @@
+#define CURL_STATICLIB
 #include "mod-ollama-chat_api.h"
 #include "Log.h"
 #include "mod-ollama-chat_config.h"
 #include <curl/curl.h>
+#include <curl/easy.h>
 #include <sstream>
 #include <nlohmann/json.hpp>
 #include <fmt/core.h>
@@ -23,6 +25,7 @@ static size_t WriteCallback(void* contents, size_t size, size_t nmemb, void* use
 // Function to perform the API call.
 std::string QueryOllamaAPI(const std::string& prompt)
 {
+    curl_global_init(CURL_GLOBAL_DEFAULT);
     CURL* curl = curl_easy_init();
     if (!curl)
     {
