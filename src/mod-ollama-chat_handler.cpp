@@ -96,18 +96,27 @@ Channel* GetValidChannel(uint32_t teamId, const std::string& channelName, Player
 
 void PlayerBotChatHandler::OnPlayerChat(Player* player, uint32_t type, uint32_t lang, std::string& msg)
 {
+    if (!g_Enable)
+        return;
+
     ChatChannelSourceLocal sourceLocal = GetChannelSourceLocal(type);
     ProcessChat(player, type, lang, msg, sourceLocal, nullptr);
 }
 
 void PlayerBotChatHandler::OnPlayerChat(Player* player, uint32_t type, uint32_t lang, std::string& msg, Group* /*group*/)
 {
+    if (!g_Enable)
+        return;
+
     ChatChannelSourceLocal sourceLocal = GetChannelSourceLocal(type);
     ProcessChat(player, type, lang, msg, sourceLocal, nullptr);
 }
 
 void PlayerBotChatHandler::OnPlayerChat(Player* player, uint32_t type, uint32_t lang, std::string& msg, Channel* channel)
 {
+    if (!g_Enable)
+        return;
+
     ChatChannelSourceLocal sourceLocal = GetChannelSourceLocal(type);
     ProcessChat(player, type, lang, msg, sourceLocal, channel);
 }

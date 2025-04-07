@@ -1,4 +1,0 @@
-CREATE TABLE IF NOT EXISTS `bot_personalities` (
-    `bot_guid` BIGINT UNSIGNED NOT NULL PRIMARY KEY,
-    `personality` TINYINT UNSIGNED NOT NULL
-);

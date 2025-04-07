@@ -27,7 +27,7 @@ std::unordered_map<uint64_t, time_t> nextRandomChatTime;
 
 void OllamaBotRandomChatter::OnUpdate(uint32 diff)
 {
-    if (!g_EnableRandomChatter)
+    if (!g_Enable || !g_EnableRandomChatter)
         return;
 
     static uint32_t timer = 0;
@@ -217,6 +217,8 @@ void OllamaBotRandomChatter::HandleRandomChatter()
             if (!botPtr) return;
             std::string response = QueryOllamaAPI(prompt);
             if (response.empty()) return;
+            botPtr = ObjectAccessor::FindPlayer(ObjectGuid(botGuid));
+            if (!botPtr) return;
             PlayerbotAI* botAI = sPlayerbotsMgr->GetPlayerbotAI(botPtr);
             if (!botAI) return;
             if (botPtr->GetGroup())

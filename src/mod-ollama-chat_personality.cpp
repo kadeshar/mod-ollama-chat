@@ -2,6 +2,7 @@
 #include "Player.h"
 #include "PlayerbotMgr.h"
 #include "Log.h"
+#include "mod-ollama-chat_config.h"
 #include <random>
 
 // Internal personality map
@@ -12,7 +13,7 @@ extern bool g_EnableRPPersonalities; // from config
 // Retrieves (and possibly initializes) the personality for a bot.
 BotPersonalityType GetBotPersonality(Player* bot)
 {
-    uint64_t botGuid = bot->GetGUID().GetRawValue();
+    uint64_t botGuid = bot->GetGUID().GetRawValue();    
     if (botPersonalities.find(botGuid) == botPersonalities.end())
     {
         if (!g_EnableRPPersonalities)
@@ -21,9 +22,31 @@ BotPersonalityType GetBotPersonality(Player* bot)
         }
         else
         {
-            botPersonalities[botGuid] = static_cast<BotPersonalityType>(urand(0, PERSONALITY_TYPES_COUNT - 1));
+            if (botPersonalityList.find(botGuid) == botPersonalityList.end())
+            {
+                uint32 newType = (urand(0, PERSONALITY_TYPES_COUNT - 1));
+                botPersonalities[botGuid] = static_cast<BotPersonalityType>(newType);
+
+                QueryResult tableExists = CharacterDatabase.Query("SELECT * FROM information_schema.tables WHERE table_schema = 'acore_characters' AND table_name = 'mod_ollama_chat_personality' LIMIT 1;");
+                if (!tableExists)
+                {
+                    LOG_INFO("server.loading", "[Ollama Chat] Please source the required database table first");
+
+                }
+                else
+                {
+                    CharacterDatabase.Execute("INSERT INTO mod_ollama_chat_personality (guid, personality) VALUES ({}, {})", botGuid, newType);
+                }
+                LOG_INFO("server.loading", "Generated new personality for bot {}: {}", bot->GetName(), botPersonalities[botGuid]);
+            }
+            else
+            {                
+                botPersonalities[botGuid] = static_cast<BotPersonalityType>(botPersonalityList[botGuid]);
+                LOG_INFO("server.loading", "Using database personality for bot {}: {}", bot->GetName(), botPersonalities[botGuid]);
+            }
+            
         }
-        LOG_INFO("server.loading", "Generated new personality for bot {}: {}", bot->GetName(), botPersonalities[botGuid]);
+        
     }
     else
     {
