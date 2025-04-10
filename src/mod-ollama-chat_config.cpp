@@ -75,6 +75,19 @@ std::vector<std::string> g_BlacklistCommands = {
     "gb ",
     "u ",
     "co ",
+    "ELVUI_VERSIONCHK",
+    "Asked ",
+    "DPSMate_",
+    "LibGroupTalents",
+    "BLT",
+    "oRA3",
+    "Skada",
+    "HealBot",
+    "hbComms",
+    "questie",
+    "pfQuest",
+    "DBMv4-Ver",
+    "BWVQ3",
 };
 
 static std::vector<std::string> SplitString(const std::string& str, char delim)
