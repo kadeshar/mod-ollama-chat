@@ -20,6 +20,10 @@
 #include "Item.h"
 #include "Bag.h"
 #include "SpellMgr.h"
+#include "AiFactory.h"
+#include "ObjectMgr.h"
+#include "QuestDef.h"
+
 
 OllamaBotRandomChatter::OllamaBotRandomChatter() : WorldScript("OllamaBotRandomChatter") {}
 
@@ -157,6 +161,7 @@ void OllamaBotRandomChatter::HandleRandomChatter()
             if (!bagItems.empty())
             {
                 Item* randomBagItem = bagItems[urand(0, bagItems.size() - 1)];
+
                 candidateComments.push_back(fmt::format("You notice a {} in your bag.", randomBagItem->GetCount(), ai->GetChatHelper()->FormatItem(randomBagItem->GetTemplate(), randomBagItem->GetCount())));
                 candidateComments.push_back(fmt::format("You are trying persuasively to sell {} of this item {}.", randomBagItem->GetCount(), ai->GetChatHelper()->FormatItem(randomBagItem->GetTemplate(), randomBagItem->GetCount())));
             }
@@ -176,6 +181,124 @@ void OllamaBotRandomChatter::HandleRandomChatter()
             }
         }
 
+        // Check for an area to quest in.
+        {
+            std::vector<std::string> questAreas;
+            for (auto const& qkv : sObjectMgr->GetQuestTemplates())
+            {
+                Quest const* qt = qkv.second;
+                if (!qt) continue;
+        
+                int32 qlevel = qt->GetQuestLevel();
+                int32 plevel = bot->GetLevel();
+                if (qlevel < plevel - 2 || qlevel > plevel + 2)
+                    continue;
+        
+                uint32 zone = qt->GetZoneOrSort();
+                if (zone == 0) continue;
+                if (auto const* area = sAreaTableStore.LookupEntry(zone))
+                {
+                    questAreas.push_back(
+                        fmt::format("Suggest you could go questing around {}.",
+                                    area->area_name[LocaleConstant::LOCALE_enUS])
+                    );
+                }
+            }
+            if (!questAreas.empty())
+                candidateComments.push_back(
+                    questAreas[urand(0, questAreas.size() - 1)]
+                );
+        }
+
+        // Check for Vendor nearby
+        {
+            Unit* unit = nullptr;
+            Acore::AnyUnitInObjectRangeCheck check(bot, g_SayDistance);
+            Acore::UnitSearcher<Acore::AnyUnitInObjectRangeCheck> searcher(bot, unit, check);
+            Cell::VisitGridObjects(bot, searcher, g_SayDistance);
+
+            if (unit && unit->GetTypeId() == TYPEID_UNIT)
+            {
+                Creature* vendor = unit->ToCreature();
+                if (vendor->HasNpcFlag(UNIT_NPC_FLAG_VENDOR))
+                {
+                    // just note “selling wares” — avoid calling .size() on VendorItemData
+                    candidateComments.push_back(
+                        fmt::format("You spot {} selling wares nearby.", vendor->GetName())
+                    );
+                }
+            }
+        }
+
+
+        // Check for Questgiver nearby
+        {
+            Unit* unit = nullptr;
+            Acore::AnyUnitInObjectRangeCheck check(bot, g_SayDistance);
+            Acore::UnitSearcher<Acore::AnyUnitInObjectRangeCheck> searcher(bot, unit, check);
+            Cell::VisitGridObjects(bot, searcher, g_SayDistance);
+
+            if (unit && unit->GetTypeId() == TYPEID_UNIT)
+            {
+                Creature* giver = unit->ToCreature();
+                if (giver->HasNpcFlag(UNIT_NPC_FLAG_QUESTGIVER))
+                {
+                    auto bounds = sObjectMgr->GetCreatureQuestRelationBounds(giver->GetEntry());
+                    int n       = std::distance(bounds.first, bounds.second);
+                    candidateComments.push_back(
+                        fmt::format("{} looks like they have {} quests for anyone brave enough.", giver->GetName(), n)
+                    );
+                }
+            }
+        }
+
+        // Check for Free bag slots (manual count)
+        {
+            int freeSlots = 0;
+            // backpack slots 0..18
+            for (uint8 i = INVENTORY_SLOT_ITEM_START; i < INVENTORY_SLOT_ITEM_END; ++i)
+                if (!bot->GetItemByPos(i))
+                    ++freeSlots;
+            // each equipped bag (slots 19..22) has its own GetFreeSlots()
+            for (uint8 b = INVENTORY_SLOT_BAG_START; b < INVENTORY_SLOT_BAG_END; ++b)
+                if (Bag* bag = bot->GetBagByPos(b))
+                    freeSlots += bag->GetFreeSlots();
+
+            candidateComments.push_back(
+                fmt::format("You have only {} free bag slots left—time to clear space?", freeSlots)
+            );
+        }
+
+        // Check for Dungeon context
+        {
+            if (bot->GetMap() && bot->GetMap()->IsDungeon())
+            {
+                std::string name = bot->GetMap()->GetMapName();
+                candidateComments.push_back(
+                    fmt::format("You're in a Dungeon instance named '{}' talk about the Dungeon or one of its Bosses.", name)
+                );
+            }
+        }
+
+        // Check for Random incomplete quest in log
+        {
+            std::vector<std::string> unfinished;
+            for (auto const& qs : bot->getQuestStatusMap())
+            {
+                if (qs.second.Status == QUEST_STATUS_INCOMPLETE)
+                {
+                    if (auto* qt = sObjectMgr->GetQuestTemplate(qs.first))
+                        unfinished.push_back(
+                            fmt::format("Say the name of and talk about your un-finished quest '{}'.", qt->GetTitle())
+                        );
+                }
+            }
+            if (!unfinished.empty())
+                candidateComments.push_back(
+                    unfinished[urand(0, unfinished.size() - 1)]
+                );
+        }
+
         if (!candidateComments.empty())
         {
             uint32_t index = urand(0, candidateComments.size() - 1);
@@ -186,25 +309,44 @@ void OllamaBotRandomChatter::HandleRandomChatter()
             environmentInfo = "Nothing special stands out nearby...";
         }
 
-        // Build a short prompt
+        // Build a rich context prompt
         auto prompt = [bot, &environmentInfo]()
         {
-            BotPersonalityType personality = GetBotPersonality(bot);
-            std::string personalityPrompt = GetPersonalityPromptAddition(personality);
-            std::string botName   = bot->GetName();
-            uint32_t botLevel   = bot->GetLevel();
-            PlayerbotAI* botAI  = sPlayerbotsMgr->GetPlayerbotAI(bot);
+            PlayerbotAI* botAI = sPlayerbotsMgr->GetPlayerbotAI(bot);
             if (!botAI)
                 return std::string("Error, no bot AI");
-            std::string botClass  = botAI->GetChatHelper()->FormatClass(bot->getClass());
+
+            BotPersonalityType personality  = GetBotPersonality(bot);
+            std::string personalityPrompt   = GetPersonalityPromptAddition(personality);
+            std::string botName             = bot->GetName();
+            uint32_t botLevel               = bot->GetLevel();
+            std::string botClass            = botAI->GetChatHelper()->FormatClass(bot->getClass());
+            std::string botRace             = botAI->GetChatHelper()->FormatRace(bot->getRace());
+            std::string botRole             = ChatHelper::FormatClass(bot, AiFactory::GetPlayerSpecTab(bot));
+            std::string botGender           = (bot->getGender() == 0 ? "Male" : "Female");
+            std::string botFaction          = (bot->GetTeamId() == TEAM_ALLIANCE ? "Alliance" : "Horde");
+
+            AreaTableEntry const* botCurrentArea = botAI->GetCurrentArea();
+            AreaTableEntry const* botCurrentZone = botAI->GetCurrentZone();
+            std::string botAreaName = botCurrentArea ? botAI->GetLocalizedAreaName(botCurrentArea) : "UnknownArea";
+            std::string botZoneName = botCurrentZone ? botAI->GetLocalizedAreaName(botCurrentZone) : "UnknownZone";
+            std::string botMapName  = bot->GetMap() ? bot->GetMap()->GetMapName() : "UnknownMap";
+
             return fmt::format(
-                "You are a WoW player named {} (level {} {}). Personality='{}'. "
-                "Looking around, {}. Comment in character (under 15 words).",
-                botName, botLevel, botClass,
+                "You are a World of Warcraft player in the Wrath of the Lich King expansion. "
+                "Your name is {}. You are a level {} {}, Race: {}, Gender: {}, Talent Spec: {}, Faction: {}. "
+                "You are currently located in {}, inside the zone '{}' on map '{}'. "
+                "Your Personality is '{}'. "
+                "You glance around the world. Make an observation and make sure to reference the main subject item: {}. "
+                "Comment aloud in character with a short statement (under 15 words) using casual WoW-style slang and attitude. "
+                "Respond as a real WoW player would: sarcastic, humorous, faction-proud, or boastful.",
+                botName, botLevel, botClass, botRace, botGender, botRole, botFaction,
+                botAreaName, botZoneName, botMapName,
                 personalityPrompt,
                 environmentInfo
             );
         }();
+
 
         LOG_INFO("server.loading", "Random Message Prompt: {} ", prompt);
 
