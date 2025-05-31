@@ -29,7 +29,10 @@ std::string QueryOllamaAPI(const std::string& prompt)
     CURL* curl = curl_easy_init();
     if (!curl)
     {
-        LOG_INFO("server.loading", "Failed to initialize cURL.");
+        if(g_DebugEnabled)
+        {
+            LOG_INFO("server.loading", "Failed to initialize cURL.");
+        }
         return "Hmm... I'm lost in thought.";
     }
 
@@ -60,9 +63,12 @@ std::string QueryOllamaAPI(const std::string& prompt)
 
     if (res != CURLE_OK)
     {
-        LOG_INFO("server.loading",
-                 "Failed to reach Ollama AI. cURL error: {}",
-                 curl_easy_strerror(res));
+        if(g_DebugEnabled)
+        {
+            LOG_INFO("server.loading",
+                    "Failed to reach Ollama AI. cURL error: {}",
+                    curl_easy_strerror(res));
+        }
         return "Failed to reach Ollama AI.";
     }
 
@@ -81,9 +87,12 @@ std::string QueryOllamaAPI(const std::string& prompt)
     }
     catch (const std::exception& e)
     {
-        LOG_INFO("server.loading",
-                 "JSON Parsing Error: {}",
-                 e.what());
+        if(g_DebugEnabled)
+        {
+            LOG_INFO("server.loading",
+                    "JSON Parsing Error: {}",
+                    e.what());
+        }
         return "Error processing response.";
     }
 
@@ -94,11 +103,17 @@ std::string QueryOllamaAPI(const std::string& prompt)
 
     if (botReply.empty())
     {
-        LOG_INFO("server.loading", "No valid response extracted.");
+        if(g_DebugEnabled)
+        {
+            LOG_INFO("server.loading", "No valid response extracted.");
+        }
         return "I'm having trouble understanding.";
     }
 
-    LOG_INFO("server.loading", "Parsed bot response: {}", botReply);
+    if(g_DebugEnabled)
+    {
+        LOG_INFO("server.loading", "Parsed bot response: {}", botReply);
+    }
     return botReply;
 }
 

@@ -1,5 +1,5 @@
 #include "mod-ollama-chat_random.h"
-#include "mod-ollama-chat_config.h"  // Added to declare configuration variables.
+#include "mod-ollama-chat_config.h"
 #include "Log.h"
 #include "Player.h"
 #include "PlayerbotAI.h"
@@ -116,7 +116,10 @@ void OllamaBotRandomChatter::HandleRandomChatter()
             Acore::UnitSearcher<Acore::AnyUnitInObjectRangeCheck> creatureSearcher(bot, unitInRange, creatureCheck);
             Cell::VisitGridObjects(bot, creatureSearcher, g_SayDistance);
             if (unitInRange && unitInRange->GetTypeId() == TYPEID_UNIT)
-                candidateComments.push_back(fmt::format("You spot a creature named '{}'", unitInRange->ToCreature()->GetName()));
+                if (!g_EnvCommentCreature.empty()) {
+                    std::string templ = g_EnvCommentCreature[urand(0, g_EnvCommentCreature.size() - 1)];
+                    candidateComments.push_back(fmt::format(templ, unitInRange->ToCreature()->GetName()));
+                }
         }
 
         // Check for nearby game object within g_SayDistance
@@ -126,7 +129,11 @@ void OllamaBotRandomChatter::HandleRandomChatter()
             Acore::GameObjectSearcher<Acore::GameObjectInRangeCheck> goSearcher(bot, goInRange, goCheck);
             Cell::VisitGridObjects(bot, goSearcher, g_SayDistance);
             if (goInRange)
-                candidateComments.push_back(fmt::format("You see a {} nearby", goInRange->GetName()));
+                if (!g_EnvCommentGameObject.empty()) {
+                    std::string templ = g_EnvCommentGameObject[urand(0, g_EnvCommentGameObject.size() - 1)];
+                    candidateComments.push_back(fmt::format(templ, goInRange->GetName()));
+                }
+
         }
 
         // Check for a random equipped item
@@ -140,7 +147,11 @@ void OllamaBotRandomChatter::HandleRandomChatter()
             if (!equippedItems.empty())
             {
                 Item* randomEquipped = equippedItems[urand(0, equippedItems.size() - 1)];
-                candidateComments.push_back(fmt::format("You glance at your {}.", randomEquipped->GetTemplate()->Name1));
+                if (!g_EnvCommentEquippedItem.empty()) {
+                    std::string templ = g_EnvCommentEquippedItem[urand(0, g_EnvCommentEquippedItem.size() - 1)];
+                    candidateComments.push_back(fmt::format(templ, randomEquipped->GetTemplate()->Name1));
+                }
+
             }
         }
 
@@ -162,8 +173,15 @@ void OllamaBotRandomChatter::HandleRandomChatter()
             {
                 Item* randomBagItem = bagItems[urand(0, bagItems.size() - 1)];
 
-                candidateComments.push_back(fmt::format("You notice a {} in your bag.", randomBagItem->GetCount(), ai->GetChatHelper()->FormatItem(randomBagItem->GetTemplate(), randomBagItem->GetCount())));
-                candidateComments.push_back(fmt::format("You are trying persuasively to sell {} of this item {}.", randomBagItem->GetCount(), ai->GetChatHelper()->FormatItem(randomBagItem->GetTemplate(), randomBagItem->GetCount())));
+                if (!g_EnvCommentBagItem.empty()) {
+                    std::string templ = g_EnvCommentBagItem[urand(0, g_EnvCommentBagItem.size() - 1)];
+                    candidateComments.push_back(fmt::format(templ, randomBagItem->GetCount(), ai->GetChatHelper()->FormatItem(randomBagItem->GetTemplate(), randomBagItem->GetCount())));
+                }
+                if (!g_EnvCommentBagItemSell.empty()) {
+                    std::string templ = g_EnvCommentBagItemSell[urand(0, g_EnvCommentBagItemSell.size() - 1)];
+                    candidateComments.push_back(fmt::format(templ, randomBagItem->GetCount(), ai->GetChatHelper()->FormatItem(randomBagItem->GetTemplate(), randomBagItem->GetCount())));
+                }
+
             }
         }
 
@@ -177,7 +195,11 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                 uint32_t randomSpellId = spellIds[urand(0, spellIds.size() - 1)];
                 SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(randomSpellId);
                 if (spellInfo)
-                    candidateComments.push_back(fmt::format("You recall your spell '{}'.", spellInfo->SpellName[0]));
+                    if (!g_EnvCommentSpell.empty()) {
+                        std::string templ = g_EnvCommentSpell[urand(0, g_EnvCommentSpell.size() - 1)];
+                        candidateComments.push_back(fmt::format(templ, spellInfo->SpellName[0]));
+                    }
+
             }
         }
 
@@ -198,10 +220,10 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                 if (zone == 0) continue;
                 if (auto const* area = sAreaTableStore.LookupEntry(zone))
                 {
-                    questAreas.push_back(
-                        fmt::format("Suggest you could go questing around {}.",
-                                    area->area_name[LocaleConstant::LOCALE_enUS])
-                    );
+                    if (!g_EnvCommentQuestArea.empty()) {
+                        std::string templ = g_EnvCommentQuestArea[urand(0, g_EnvCommentQuestArea.size() - 1)];
+                        questAreas.push_back(fmt::format(templ, area->area_name[LocaleConstant::LOCALE_enUS]));
+                    }
                 }
             }
             if (!questAreas.empty())
@@ -222,10 +244,10 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                 Creature* vendor = unit->ToCreature();
                 if (vendor->HasNpcFlag(UNIT_NPC_FLAG_VENDOR))
                 {
-                    // just note “selling wares” — avoid calling .size() on VendorItemData
-                    candidateComments.push_back(
-                        fmt::format("You spot {} selling wares nearby.", vendor->GetName())
-                    );
+                    if (!g_EnvCommentVendor.empty()) {
+                        std::string templ = g_EnvCommentVendor[urand(0, g_EnvCommentVendor.size() - 1)];
+                        candidateComments.push_back(fmt::format(templ, vendor->GetName()));
+                    }
                 }
             }
         }
@@ -245,9 +267,10 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                 {
                     auto bounds = sObjectMgr->GetCreatureQuestRelationBounds(giver->GetEntry());
                     int n       = std::distance(bounds.first, bounds.second);
-                    candidateComments.push_back(
-                        fmt::format("{} looks like they have {} quests for anyone brave enough.", giver->GetName(), n)
-                    );
+                    if (!g_EnvCommentQuestgiver.empty()) {
+                        std::string templ = g_EnvCommentQuestgiver[urand(0, g_EnvCommentQuestgiver.size() - 1)];
+                        candidateComments.push_back(fmt::format(templ, giver->GetName(), n));
+                    }
                 }
             }
         }
@@ -264,9 +287,11 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                 if (Bag* bag = bot->GetBagByPos(b))
                     freeSlots += bag->GetFreeSlots();
 
-            candidateComments.push_back(
-                fmt::format("You have only {} free bag slots left—time to clear space?", freeSlots)
-            );
+            if (!g_EnvCommentBagSlots.empty()) {
+                std::string templ = g_EnvCommentBagSlots[urand(0, g_EnvCommentBagSlots.size() - 1)];
+                candidateComments.push_back(fmt::format(templ, freeSlots));
+            }
+
         }
 
         // Check for Dungeon context
@@ -274,9 +299,10 @@ void OllamaBotRandomChatter::HandleRandomChatter()
             if (bot->GetMap() && bot->GetMap()->IsDungeon())
             {
                 std::string name = bot->GetMap()->GetMapName();
-                candidateComments.push_back(
-                    fmt::format("You're in a Dungeon instance named '{}' talk about the Dungeon or one of its Bosses.", name)
-                );
+                if (!g_EnvCommentDungeon.empty()) {
+                    std::string templ = g_EnvCommentDungeon[urand(0, g_EnvCommentDungeon.size() - 1)];
+                    candidateComments.push_back(fmt::format(templ, name));
+                }
             }
         }
 
@@ -288,9 +314,10 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                 if (qs.second.Status == QUEST_STATUS_INCOMPLETE)
                 {
                     if (auto* qt = sObjectMgr->GetQuestTemplate(qs.first))
-                        unfinished.push_back(
-                            fmt::format("Say the name of and talk about your un-finished quest '{}'.", qt->GetTitle())
-                        );
+                        if (!g_EnvCommentUnfinishedQuest.empty()) {
+                            std::string templ = g_EnvCommentUnfinishedQuest[urand(0, g_EnvCommentUnfinishedQuest.size() - 1)];
+                            unfinished.push_back(fmt::format(templ, qt->GetTitle()));
+                        }
                 }
             }
             if (!unfinished.empty())
@@ -306,7 +333,7 @@ void OllamaBotRandomChatter::HandleRandomChatter()
         }
         else
         {
-            environmentInfo = "Nothing special stands out nearby...";
+            environmentInfo = "";
         }
 
         // Build a rich context prompt
@@ -316,7 +343,7 @@ void OllamaBotRandomChatter::HandleRandomChatter()
             if (!botAI)
                 return std::string("Error, no bot AI");
 
-            BotPersonalityType personality  = GetBotPersonality(bot);
+            std::string personality         = GetBotPersonality(bot);
             std::string personalityPrompt   = GetPersonalityPromptAddition(personality);
             std::string botName             = bot->GetName();
             uint32_t botLevel               = bot->GetLevel();
@@ -333,13 +360,7 @@ void OllamaBotRandomChatter::HandleRandomChatter()
             std::string botMapName  = bot->GetMap() ? bot->GetMap()->GetMapName() : "UnknownMap";
 
             return fmt::format(
-                "You are a World of Warcraft player in the Wrath of the Lich King expansion. "
-                "Your name is {}. You are a level {} {}, Race: {}, Gender: {}, Talent Spec: {}, Faction: {}. "
-                "You are currently located in {}, inside the zone '{}' on map '{}'. "
-                "Your Personality is '{}'. "
-                "You glance around the world. Make an observation and make sure to reference the main subject item: {}. "
-                "Comment aloud in character with a short statement (under 15 words) using casual WoW-style slang and attitude. "
-                "Respond as a real WoW player would: sarcastic, humorous, faction-proud, or boastful.",
+                g_RandomChatterPromptTemplate,
                 botName, botLevel, botClass, botRace, botGender, botRole, botFaction,
                 botAreaName, botZoneName, botMapName,
                 personalityPrompt,
@@ -348,7 +369,10 @@ void OllamaBotRandomChatter::HandleRandomChatter()
         }();
 
 
-        LOG_INFO("server.loading", "Random Message Prompt: {} ", prompt);
+        if(g_DebugEnabled)
+        {
+            LOG_INFO("server.loading", "Random Message Prompt: {} ", prompt);
+        }
 
         uint64_t botGuid = bot->GetGUID().GetRawValue();
 
@@ -376,12 +400,18 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                 std::string selectedChannel = channels[dist(gen)];
                 if (selectedChannel == "Say")
                 {
-                    LOG_INFO("server.loading", "Bot Random Chatter Say: {}", response);
+                    if(g_DebugEnabled)
+                    {
+                        LOG_INFO("server.loading", "Bot Random Chatter Say: {}", response);
+                    }
                     botAI->Say(response);
                 }
                 else if (selectedChannel == "General")
                 {
-                    LOG_INFO("server.loading", "Bot Random Chatter General: {}", response);
+                    if(g_DebugEnabled)
+                    {
+                        LOG_INFO("server.loading", "Bot Random Chatter General: {}", response);
+                    }
                     botAI->SayToChannel(response, ChatChannelId::GENERAL);
                 }
             }

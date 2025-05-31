@@ -60,25 +60,18 @@ ChatChannelSourceLocal GetChannelSourceLocal(uint32_t type)
     switch (type)
     {
         case 1:
-            LOG_INFO("server.loading", "Say channel");
             return SRC_SAY_LOCAL;
         case 51:
-            LOG_INFO("server.loading", "Party channel");
             return SRC_PARTY_LOCAL;
         case 3:
-            LOG_INFO("server.loading", "Raid channel");
             return SRC_RAID_LOCAL;
         case 5:
-            LOG_INFO("server.loading", "Guild channel");
             return SRC_GUILD_LOCAL;
         case 6:
-            LOG_INFO("server.loading", "Yell channel");
             return SRC_YELL_LOCAL;
         case 17:
-            LOG_INFO("server.loading", "General channel");
             return SRC_GENERAL_LOCAL;
         default:
-            LOG_INFO("server.loading", "Undefined channel, type: {}", type);
             return SRC_UNDEFINED_LOCAL;
     }
 }
@@ -89,7 +82,10 @@ Channel* GetValidChannel(uint32_t teamId, const std::string& channelName, Player
     Channel* channel = cMgr->GetChannel(channelName, player);
     if (!channel)
     {
-        LOG_ERROR("server.loading", "Channel '{}' not found for team {}", channelName, teamId);
+        if(g_DebugEnabled)
+        {
+            LOG_ERROR("server.loading", "Channel '{}' not found for team {}", channelName, teamId);
+        }
     }
     return channel;
 }
@@ -125,16 +121,22 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
 {
     std::string chanName = (channel != nullptr) ? channel->GetName() : "Unknown";
     uint32_t channelId = (channel != nullptr) ? channel->GetChannelId() : 0;
-    LOG_INFO("server.loading",
-             "Player {} sent msg: '{}' | Channel Name: {} | Channel ID: {}",
-             player->GetName(), msg, chanName, channelId);
+    if(g_DebugEnabled)
+    {
+        LOG_INFO("server.loading",
+                "Player {} sent msg: '{}' | Channel Name: {} | Channel ID: {}",
+                player->GetName(), msg, chanName, channelId);
+    }
 
     std::string trimmedMsg = rtrim(msg);
     for (const std::string& blacklist : g_BlacklistCommands)
     {
         if (trimmedMsg.find(blacklist) == 0)
         {
-            LOG_INFO("server.loading", "Message starts with '{}' (blacklisted). Skipping bot responses.", blacklist);
+            if(g_DebugEnabled)
+            {
+                LOG_INFO("server.loading", "Message starts with '{}' (blacklisted). Skipping bot responses.", blacklist);
+            }
             return;
         }
     }
@@ -222,7 +224,10 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
         if (!senderIsBot)
         {
             finalCandidates.push_back(chosenBot);
-            LOG_INFO("server.loading", "Non-bot player mentioned bot '{}', forcing reply.", chosenBot->GetName());
+            if(g_DebugEnabled)
+            {
+                LOG_INFO("server.loading", "Non-bot player mentioned bot '{}', forcing reply.", chosenBot->GetName());
+            }
         }
         else
         {
@@ -243,7 +248,10 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
     
     if (finalCandidates.empty())
     {
-        LOG_INFO("server.loading", "No eligible bots found to respond to message '{}'.", msg);
+        if(g_DebugEnabled)
+        {
+            LOG_INFO("server.loading", "No eligible bots found to respond to message '{}'.", msg);
+        }
         return;
     }
     
@@ -261,7 +269,10 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
     for (Player* bot : finalCandidates)
     {
         float distance = player->GetDistance(bot);
-        LOG_INFO("server.loading", "Bot {} (distance: {}) is set to respond.", bot->GetName(), distance);
+        if(g_DebugEnabled)
+        {
+            LOG_INFO("server.loading", "Bot {} (distance: {}) is set to respond.", bot->GetName(), distance);
+        }
         std::string prompt = GenerateBotPrompt(bot, msg, player);
         uint64_t botGuid = bot->GetGUID().GetRawValue();
         
@@ -276,23 +287,35 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
                 Player* senderPtr = ObjectAccessor::FindPlayer(ObjectGuid(senderGuid));
                 if (!botPtr)
                 {
-                    LOG_ERROR("server.loading", "Failed to reacquire bot from GUID {}", botGuid);
+                    if(g_DebugEnabled)
+                    {
+                        LOG_ERROR("server.loading", "Failed to reacquire bot from GUID {}", botGuid);
+                    }
                     return;
                 }
                 if (!senderPtr)
                 {
-                    LOG_ERROR("server.loading", "Failed to reacquire sender from GUID {}", senderGuid);
+                    if(g_DebugEnabled)
+                    {
+                        LOG_ERROR("server.loading", "Failed to reacquire sender from GUID {}", senderGuid);
+                    }
                     return;
                 }
                 if (response.empty())
                 {
-                    LOG_ERROR("server.loading", "Bot {} received empty response from Ollama API.", botPtr->GetName());
+                    if(g_DebugEnabled)
+                    {
+                        LOG_ERROR("server.loading", "Bot {} received empty response from Ollama API.", botPtr->GetName());
+                    }
                     return;
                 }
                 PlayerbotAI* botAI = sPlayerbotsMgr->GetPlayerbotAI(botPtr);
                 if (!botAI)
                 {
-                    LOG_ERROR("server.loading", "No PlayerbotAI found for bot {}", botPtr->GetName());
+                    if(g_DebugEnabled)
+                    {
+                        LOG_ERROR("server.loading", "No PlayerbotAI found for bot {}", botPtr->GetName());
+                    }
                     return;
                 }
                 // Route the response.
@@ -314,11 +337,17 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
                     }
                 }
                 float respDistance = senderPtr->GetDistance(botPtr);
-                LOG_INFO("server.loading", "Bot {} (distance: {}) responded: {}", botPtr->GetName(), respDistance, response);
+                if(g_DebugEnabled)
+                {
+                    LOG_INFO("server.loading", "Bot {} (distance: {}) responded: {}", botPtr->GetName(), respDistance, response);
+                }
             }
             catch (const std::exception& ex)
             {
-                LOG_ERROR("server.loading", "Exception in bot response thread: {}", ex.what());
+                if(g_DebugEnabled)
+                {
+                    LOG_ERROR("server.loading", "Exception in bot response thread: {}", ex.what());
+                }
             }
         }).detach();
 
@@ -439,7 +468,7 @@ static bool IsBotEligibleForChatChannelLocal(Player* bot, Player* player,
         AreaTableEntry const* botCurrentArea = botAI->GetCurrentArea();
         AreaTableEntry const* botCurrentZone = botAI->GetCurrentZone();
 
-        BotPersonalityType personality  = GetBotPersonality(bot);
+        std::string personality         = GetBotPersonality(bot);
         std::string personalityPrompt   = GetPersonalityPromptAddition(personality);
         std::string botName             = bot->GetName();
         uint32_t botLevel               = bot->GetLevel();
@@ -469,28 +498,14 @@ static bool IsBotEligibleForChatChannelLocal(Player* bot, Player* player,
         uint32_t playerGold             = player->GetMoney() / 10000;
         float playerDistance            = player->IsInWorld() && bot->IsInWorld() ? player->GetDistance(bot) : -1.0f;
 
-        std::string locationInfo = fmt::format("Bot is in area '{}', zone '{}', map '{}'.", botAreaName, botZoneName, botMapName);
-
         std::string extraInfo = fmt::format(
-            "Your info: Race: {}, Gender: {}, Talent Spec: {}, Faction: {}, Guild: {}, Group: {}, Gold: {}. "
-            "Other players info: Race: {}, Gender: {}, Talent Spec: {}, Faction: {}, Guild: {}, Group: {}, Gold: {}. "
-            "Approximate distance between you and other player: {:.1f} yards. {}",
+            g_ChatExtraInfoTemplate,
             botRace, botGender, botRole, botFaction, botGuild, botGroupStatus, botGold,
             playerRace, playerGender, playerRole, playerFaction, playerGuild, playerGroupStatus, playerGold,
-            playerDistance, locationInfo
+            playerDistance, botAreaName, botZoneName, botMapName
         );
         std::string prompt = fmt::format(
-            "You are a World of Warcraft player in the Wrath of the Lich King expansion version of the game, but you are also knowledgeable about Vanilla WoW and The Burning Crusade. "
-            "Make sure your responses are relevant to the game lore and context. "
-            "Your character's name is {} and you are a level {} {}. Your Personality is '{}'. "
-            "A level {} {} named {} said '{}' in the game chat. "
-            "Reply (under 15 words) relevant to the message and context. {} "
-            "Keep your responses natural and unfiltered, just like real WoW players; embrace common slang, faction pride, and rivalry. "
-            "If someone jokes, joke back. If they’re rude, don’t hold back being rude to them. "
-            "Show respect to high-level players but be snooty and entitled over lower levels. "
-            "When giving directions, be precise, using landmarks, flight paths, and major cities for clarity. "
-            "Keep responses accurate, short and to the point. Be factual about everything like your location, race, class, etc. Do not say you're in a location or are a class or race that you are not. "
-            "Always prioritize sounding like a real human player.",
+            g_ChatPromptTemplate,
             botName, botLevel, botClass, personalityPrompt,
             playerLevel, playerClass, playerName, playerMessage,
             extraInfo

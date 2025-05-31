@@ -138,6 +138,8 @@ All configuration options for mod-ollama-chat are defined in `mod-ollama-chat.co
   Maximum number of concurrent API queries allowed. Use `0` for no limit.  
   Default: `0`
 
+> For a complete list of all available configuration options with comments and defaults, see `mod-ollama-chat.conf.dist` included in this repository.
+
 ## How It Works
 
 1. **Chat Handling:**  
@@ -151,6 +153,20 @@ All configuration options for mod-ollama-chat are defined in `mod-ollama-chat.co
 
 4. **Personality & Random Chatter:**  
    Bots have assigned personality types that affect their responses. Additionally, bots may randomly generate environment-based chatter when real players are nearby.
+
+## Personality Packs
+
+`mod-ollama-chat` supports Personality Packs, which are collections of personality templates that define how bots roleplay and interact in-game.
+
+- To use a Personality Pack, download or create a `.sql` file named in the format `YYYY_MM_DD_personality_pack_NAME.sql`.
+
+- Place the `.sql` file in `modules/mod-ollama-chat/data/sql/characters/base/`.
+
+- The module will automatically detect and apply any new Personality Packs when the server starts or updates—no manual SQL import required.
+
+Want to create your own pack or download packs made by the community?  
+
+Visit the [Personality Packs Discussion Board](https://github.com/DustinHendrickson/mod-ollama-chat/discussions)
 
 ## Debugging
 
