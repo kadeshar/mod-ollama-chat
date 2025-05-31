@@ -365,77 +365,77 @@ static bool IsBotEligibleForChatChannelLocal(Player* bot, Player* player,
     }
 }
 
-const std::string WOW_CHEATSHEET = R"(
-    World of Warcraft Comprehensive Cheat Sheet:
-    ------------------------------------------------------------
-    1. Game Overview:
-       - World of Warcraft (WoW) is an expansive MMORPG set in the world of Azeroth.
-       - This cheat sheet covers key information from the Base Game (Vanilla WoW), The Burning Crusade, and Wrath of the Lich King.
-       - It provides details on lore, key locations, faction identities, and in-game terminology.
+// const std::string WOW_CHEATSHEET = R"(
+//     World of Warcraft Comprehensive Cheat Sheet:
+//     ------------------------------------------------------------
+//     1. Game Overview:
+//        - World of Warcraft (WoW) is an expansive MMORPG set in the world of Azeroth.
+//        - This cheat sheet covers key information from the Base Game (Vanilla WoW), The Burning Crusade, and Wrath of the Lich King.
+//        - It provides details on lore, key locations, faction identities, and in-game terminology.
     
-    2. Expansions & Key Locations:
-       - Base Game (Vanilla WoW):
-           * Eastern Kingdoms: Includes Stormwind (the Human capital, renowned for its grand architecture), Ironforge (the Dwarf capital, carved into mountains), and Undercity (the Forsaken capital, dark and foreboding).
-           * Kalimdor: Includes Darnassus (the Night Elf capital, set in ancient groves), Orgrimmar (the Orc capital, a fortress of might), and Thunder Bluff (the Tauren capital, elevated on vast plains).
-       - The Burning Crusade (TBC):
-           * Introduces Outland with key locations such as Shattrath City (a major neutral hub) and Silvermoon City (the Blood Elf capital).
-           * New races include the Draenei (Alliance) and Blood Elves (Horde).
-       - Wrath of the Lich King (WotLK):
-           * Introduces Northrend with zones such as Icecrown (home of the Lich King and Icecrown Citadel), Dragonblight, Howling Fjord, and Borean Tundra.
-           * Classic faction capitals from Vanilla remain central to faction identity.
+//     2. Expansions & Key Locations:
+//        - Base Game (Vanilla WoW):
+//            * Eastern Kingdoms: Includes Stormwind (the Human capital, renowned for its grand architecture), Ironforge (the Dwarf capital, carved into mountains), and Undercity (the Forsaken capital, dark and foreboding).
+//            * Kalimdor: Includes Darnassus (the Night Elf capital, set in ancient groves), Orgrimmar (the Orc capital, a fortress of might), and Thunder Bluff (the Tauren capital, elevated on vast plains).
+//        - The Burning Crusade (TBC):
+//            * Introduces Outland with key locations such as Shattrath City (a major neutral hub) and Silvermoon City (the Blood Elf capital).
+//            * New races include the Draenei (Alliance) and Blood Elves (Horde).
+//        - Wrath of the Lich King (WotLK):
+//            * Introduces Northrend with zones such as Icecrown (home of the Lich King and Icecrown Citadel), Dragonblight, Howling Fjord, and Borean Tundra.
+//            * Classic faction capitals from Vanilla remain central to faction identity.
     
-    3. Factions & Races:
-       - Two major factions:
-           * Alliance: Emphasizes honor, unity, and tradition.
-                 - Key capitals: Stormwind, Ironforge, Darnassus; plus the Draenei are added in TBC.
-           * Horde: Emphasizes resilience and diversity.
-                 - Key capitals: Orgrimmar, Undercity, Thunder Bluff; plus the Blood Elves (capital: Silvermoon City) in TBC.
-       - Races across expansions include Humans, Dwarves, Night Elves, Gnomes, Orcs, Tauren, Trolls, Forsaken, Draenei, and Blood Elves.
+//     3. Factions & Races:
+//        - Two major factions:
+//            * Alliance: Emphasizes honor, unity, and tradition.
+//                  - Key capitals: Stormwind, Ironforge, Darnassus; plus the Draenei are added in TBC.
+//            * Horde: Emphasizes resilience and diversity.
+//                  - Key capitals: Orgrimmar, Undercity, Thunder Bluff; plus the Blood Elves (capital: Silvermoon City) in TBC.
+//        - Races across expansions include Humans, Dwarves, Night Elves, Gnomes, Orcs, Tauren, Trolls, Forsaken, Draenei, and Blood Elves.
     
-    4. Classes & Roles:
-       - Classes: Warrior, Paladin, Hunter, Rogue, Priest, Shaman, Mage, Warlock, Druid, and Death Knight.
-       - Roles:
-           - Tank: Absorbs damage and holds enemy threat.
-           - Healer: Restores health and removes debuffs.
-           - DPS: Focuses on dealing high damage.
-       - Each class features multiple specializations (e.g., Protection vs. Fury for Warriors) that define play style and group dynamics.
+//     4. Classes & Roles:
+//        - Classes: Warrior, Paladin, Hunter, Rogue, Priest, Shaman, Mage, Warlock, Druid, and Death Knight.
+//        - Roles:
+//            - Tank: Absorbs damage and holds enemy threat.
+//            - Healer: Restores health and removes debuffs.
+//            - DPS: Focuses on dealing high damage.
+//        - Each class features multiple specializations (e.g., Protection vs. Fury for Warriors) that define play style and group dynamics.
     
-    5. Key Terminology & In-Game Lingo:
-       - Aggro: The threat level a player generates; crucial for tanks.
-       - DPS: Damage per second; a measure of damage output as well as a role.
-       - Pull: Initiating combat by drawing enemies.
-       - CC (Crowd Control): Abilities that disable or hinder enemy actions.
-       - Grinding: Repeatedly defeating mobs for experience, loot, or gold.
-       - PUG: Pick-Up Group, often formed spontaneously for dungeons or raids.
-       - Ganking: Ambushing lower-level or unprepared players.
-       - Common abbreviations and emotes (e.g., gg, lfg, /wave) are integral to in-game chat.
+//     5. Key Terminology & In-Game Lingo:
+//        - Aggro: The threat level a player generates; crucial for tanks.
+//        - DPS: Damage per second; a measure of damage output as well as a role.
+//        - Pull: Initiating combat by drawing enemies.
+//        - CC (Crowd Control): Abilities that disable or hinder enemy actions.
+//        - Grinding: Repeatedly defeating mobs for experience, loot, or gold.
+//        - PUG: Pick-Up Group, often formed spontaneously for dungeons or raids.
+//        - Ganking: Ambushing lower-level or unprepared players.
+//        - Common abbreviations and emotes (e.g., gg, lfg, /wave) are integral to in-game chat.
     
-    6. Lore & Cultural References:
-       - Central narrative elements include the rise of the Lich King, the Scourge, and ongoing faction rivalries.
-       - Iconic characters include Arthas, Sylvanas, Thrall, Jaina, among others.
-       - Legendary raids, quests, and events (e.g., Icecrown Citadel, Naxxramas, Ulduar) are frequent topics.
+//     6. Lore & Cultural References:
+//        - Central narrative elements include the rise of the Lich King, the Scourge, and ongoing faction rivalries.
+//        - Iconic characters include Arthas, Sylvanas, Thrall, Jaina, among others.
+//        - Legendary raids, quests, and events (e.g., Icecrown Citadel, Naxxramas, Ulduar) are frequent topics.
     
-    7. Communication Style & Chat Dynamics:
-       - Chat in WoW blends roleplay with casual banter, in-character dialogue, and game-specific slang.
-       - Tone can be humorous, sarcastic, or epic; responses should use appropriate in-game terminology.
-       - Emotes and abbreviations are common; always use the language of a seasoned WoW player.
+//     7. Communication Style & Chat Dynamics:
+//        - Chat in WoW blends roleplay with casual banter, in-character dialogue, and game-specific slang.
+//        - Tone can be humorous, sarcastic, or epic; responses should use appropriate in-game terminology.
+//        - Emotes and abbreviations are common; always use the language of a seasoned WoW player.
     
-    8. Additional Vital Game Mechanics:
-       - Leveling & Gear: Progression is based on gaining levels and acquiring better equipment.
-       - Economy: In-game currency, professions, and auctions are essential.
-       - Reputation: Faction standings affect quest availability and social interactions.
-       - PvP & Group Dynamics: Cooperative group play and competitive battlegrounds are central.
-    ------------------------------------------------------------
-    Instructions for the LLM:
-    - Use the above cheat sheet as your comprehensive reference for all aspects of World of Warcraft, including details from Vanilla, The Burning Crusade, and Wrath of the Lich King.
-    - Interpret capital cities and faction details as specified.
-    - Incorporate class roles, terminology, lore, and in-game communication style when generating responses.
-    )";
+//     8. Additional Vital Game Mechanics:
+//        - Leveling & Gear: Progression is based on gaining levels and acquiring better equipment.
+//        - Economy: In-game currency, professions, and auctions are essential.
+//        - Reputation: Faction standings affect quest availability and social interactions.
+//        - PvP & Group Dynamics: Cooperative group play and competitive battlegrounds are central.
+//     ------------------------------------------------------------
+//     Instructions for the LLM:
+//     - Use the above cheat sheet as your comprehensive reference for all aspects of World of Warcraft, including details from Vanilla, The Burning Crusade, and Wrath of the Lich King.
+//     - Interpret capital cities and faction details as specified.
+//     - Incorporate class roles, terminology, lore, and in-game communication style when generating responses.
+//     )";
     
     std::string GenerateBotPrompt(Player* bot, std::string playerMessage, Player* player)
     {  
         PlayerbotAI* botAI = sPlayerbotsMgr->GetPlayerbotAI(bot);
-    
+
         AreaTableEntry const* botCurrentArea = botAI->GetCurrentArea();
         AreaTableEntry const* botCurrentZone = botAI->GetCurrentZone();
 
@@ -446,11 +446,16 @@ const std::string WOW_CHEATSHEET = R"(
         uint8_t botGenderByte           = bot->getGender();
         std::string botAreaName         = botCurrentArea ? botAI->GetLocalizedAreaName(botCurrentArea): "UnknownArea";
         std::string botZoneName         = botCurrentZone ? botAI->GetLocalizedAreaName(botCurrentZone): "UnknownZone";
+        std::string botMapName          = bot->GetMap() ? bot->GetMap()->GetMapName() : "UnknownMap";
         std::string botClass            = botAI->GetChatHelper()->FormatClass(bot->getClass());
         std::string botRace             = botAI->GetChatHelper()->FormatRace(bot->getRace());
         std::string botRole             = ChatHelper::FormatClass(bot, AiFactory::GetPlayerSpecTab(bot));
         std::string botGender           = (botGenderByte == 0 ? "Male" : "Female");
         std::string botFaction          = (bot->GetTeamId() == TEAM_ALLIANCE ? "Alliance" : "Horde");
+        std::string botGuild            = (bot->GetGuild() ? bot->GetGuild()->GetName() : "No Guild");
+        std::string botGroupStatus      = (bot->GetGroup() ? "In a group" : "Solo");
+        uint32_t botGold                = bot->GetMoney() / 10000;
+
         std::string playerName          = player->GetName();
         uint32_t playerLevel            = player->GetLevel();
         std::string playerClass         = botAI->GetChatHelper()->FormatClass(player->getClass());
@@ -462,25 +467,24 @@ const std::string WOW_CHEATSHEET = R"(
         std::string playerGuild         = (player->GetGuild() ? player->GetGuild()->GetName() : "No Guild");
         std::string playerGroupStatus   = (player->GetGroup() ? "In a group" : "Solo");
         uint32_t playerGold             = player->GetMoney() / 10000;
-    
+        float playerDistance            = player->IsInWorld() && bot->IsInWorld() ? player->GetDistance(bot) : -1.0f;
+
+        std::string locationInfo = fmt::format("Bot is in area '{}', zone '{}', map '{}'.", botAreaName, botZoneName, botMapName);
+
         std::string extraInfo = fmt::format(
-            "Bot info: Race: {}, Gender: {}, Talent Spec: {}, Faction: {}. "
-            "Player info: Race: {}, Gender: {}, Talent Spec: {}, Faction: {}, Guild: {}, Group: {}, Gold: {}.",
-            botRace, botGender, botRole, botFaction,
-            playerRace, playerGender, playerRole, playerFaction, playerGuild, playerGroupStatus, playerGold
+            "Your info: Race: {}, Gender: {}, Talent Spec: {}, Faction: {}, Guild: {}, Group: {}, Gold: {}. "
+            "Other players info: Race: {}, Gender: {}, Talent Spec: {}, Faction: {}, Guild: {}, Group: {}, Gold: {}. "
+            "Approximate distance between you and other player: {:.1f} yards. {}",
+            botRace, botGender, botRole, botFaction, botGuild, botGroupStatus, botGold,
+            playerRace, playerGender, playerRole, playerFaction, playerGuild, playerGroupStatus, playerGold,
+            playerDistance, locationInfo
         );
-    
-        const std::string CHEATSHEET_USAGE =
-            "IMPORTANT: Refer to the comprehensive cheat sheet above for details on WoW lore, terminology, faction capitals, class roles, and communication style. "
-            "Use this reference to ensure that your response accurately reflects all expansions (Vanilla, TBC, and Wrath) and maintains authentic in-game language.";
-    
         std::string prompt = fmt::format(
             "You are a World of Warcraft player in the Wrath of the Lich King expansion version of the game, but you are also knowledgeable about Vanilla WoW and The Burning Crusade. "
+            "Make sure your responses are relevant to the game lore and context. "
             "Your character's name is {} and you are a level {} {}. Your Personality is '{}'. "
             "A level {} {} named {} said '{}' in the game chat. "
             "Reply (under 15 words) relevant to the message and context. {} "
-            "Cheat Sheet: {} "
-            "{} "
             "Keep your responses natural and unfiltered, just like real WoW players; embrace common slang, faction pride, and rivalry. "
             "If someone jokes, joke back. If they’re rude, don’t hold back being rude to them. "
             "Show respect to high-level players but be snooty and entitled over lower levels. "
@@ -489,9 +493,11 @@ const std::string WOW_CHEATSHEET = R"(
             "Always prioritize sounding like a real human player.",
             botName, botLevel, botClass, personalityPrompt,
             playerLevel, playerClass, playerName, playerMessage,
-            extraInfo, WOW_CHEATSHEET, CHEATSHEET_USAGE
+            extraInfo
         );
+
         return prompt;
     }
+
     
 
