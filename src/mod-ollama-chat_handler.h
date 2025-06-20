@@ -20,6 +20,8 @@ extern const char* ChatChannelSourceLocalStr[];
 std::string rtrim(const std::string& s);
 ChatChannelSourceLocal GetChannelSourceLocal(uint32_t type);
 
+void SaveBotConversationHistoryToDB();
+
 class PlayerBotChatHandler : public PlayerScript
 {
 public:

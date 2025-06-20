@@ -7,44 +7,12 @@
 
 class Player; // forward declaration
 
-enum BotPersonalityType {
-    PERSONALITY_GAMER,
-    PERSONALITY_ROLEPLAYER,
-    PERSONALITY_LOOTGOBLIN,
-    PERSONALITY_PVP_HARDCORE,
-    PERSONALITY_RAIDER,
-    PERSONALITY_CASUAL,
-    PERSONALITY_TRADER,
-    PERSONALITY_NPC_IMPERSONATOR,
-    PERSONALITY_GRUMPY_VETERAN,
-    PERSONALITY_HEROIC_LEADER,
-    PERSONALITY_TRICKSTER,
-    PERSONALITY_LONE_WOLF,
-    PERSONALITY_FOOL,
-    PERSONALITY_ANCIENT_WISE_ONE,
-    PERSONALITY_BARD,
-    PERSONALITY_CONSPIRACY_THEORIST,
-    PERSONALITY_EDGE_LORD,
-    PERSONALITY_FANATIC,
-    PERSONALITY_HYPE_MAN,
-    PERSONALITY_PARANOID,
-    PERSONALITY_FLIRT,
-    PERSONALITY_RAGER,
-    PERSONALITY_STONER,
-    PERSONALITY_YOUNG_APPRENTICE,
-    PERSONALITY_MENTOR,
-    PERSONALITY_SCHOLAR,
-    PERSONALITY_GLITCHED_AI,
-    PERSONALITY_WANNABE_VILLAIN,
-    PERSONALITY_JOLLY_BEER_LOVER,
-    PERSONALITY_GOBLIN_MERCHANT,
-    PERSONALITY_PIRATE,
-    PERSONALITY_CHEF,
-    PERSONALITY_POET,
-    PERSONALITY_TYPES_COUNT
-};
+// Returns the personality key (as a string) assigned to the given bot.
+// Will randomly assign from the loaded config if not yet set.
+std::string GetBotPersonality(Player* bot);
 
-BotPersonalityType GetBotPersonality(Player* bot);
-std::string GetPersonalityPromptAddition(BotPersonalityType type);
+// Given a personality key, returns the prompt addition string from config.
+// Falls back to a default if not found.
+std::string GetPersonalityPromptAddition(const std::string& type);
 
 #endif // MOD_OLLAMA_CHAT_PERSONALITY_H
