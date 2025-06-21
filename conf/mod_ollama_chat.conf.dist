@@ -105,6 +105,13 @@ OllamaChat.RandomChatterRealPlayerDistance = 40.0
 #     Default:     25
 OllamaChat.RandomChatterBotCommentChance = 25
 
+# OllamaChat.RandomChatterMaxBotsPerPlayer
+#     Description: The maximum number of AI bots that can trigger per random chatter update when a real player is nearby.
+#                  This limits how many bots can respond at once to avoid spam.
+#                   Each bot can only process once per tick, no duplicates if multiple real players are close.
+#     Default:     2
+OllamaChat.RandomChatterMaxBotsPerPlayer = 2
+
 # OllamaChat.BlacklistCommands
 #     Description: A comma-separated list of command prefixes that should be ignored by AI bots.
 #                  If a message starts with any of these prefixes, the bot will not respond.
@@ -241,10 +248,10 @@ OllamaChat.EnvCommentBagItemSell = You are trying persuasively to sell {} of thi
 
 # OllamaChat.EnvCommentSpell
 #     Description: A pipe-separated (|) list of template messages about a random known spell.
-#                  Use '{}' as a placeholder for the spell name.
-#     Example:     Talk about use cases or strategies for your spell '{}'.|Your spell '{}' comes in handy sometimes.
-#     Default:     Talk about use cases or strategies for your spell '{}'.
-OllamaChat.EnvCommentSpell = Talk about use cases or strategies for your spell '{}'.
+#                  Use '{}' as placeholders for: spell name, effect, and cost, in that order.
+#     Example:     Discuss possible uses or strategies for '{}', which {} and costs {}.|Explain situations where '{}' is useful ({}; costs {}).
+#     Default:     Discuss possible uses or strategies for '{}', which {} and costs {}.
+OllamaChat.EnvCommentSpell = Discuss possible uses or strategies for '{}', which {} and costs {}.
 
 # OllamaChat.EnvCommentQuestArea
 #     Description: A pipe-separated (|) list of template messages to suggest an area to quest in.

@@ -28,6 +28,8 @@ uint32_t   g_MinRandomInterval               = 45;
 uint32_t   g_MaxRandomInterval               = 180;
 float      g_RandomChatterRealPlayerDistance = 40.0f;
 uint32_t   g_RandomChatterBotCommentChance   = 25;
+uint32_t   g_RandomChatterMaxBotsPerPlayer   = 2;
+
 
 bool       g_EnableRPPersonalities           = false;
 
@@ -189,7 +191,8 @@ void LoadOllamaChatConfig()
     g_MaxRandomInterval               = sConfigMgr->GetOption<uint32_t>("OllamaChat.MaxRandomInterval", 180);
     g_RandomChatterRealPlayerDistance = sConfigMgr->GetOption<float>("OllamaChat.RandomChatterRealPlayerDistance", 40.0f);
     g_RandomChatterBotCommentChance   = sConfigMgr->GetOption<uint32_t>("OllamaChat.RandomChatterBotCommentChance", 25);
-    
+    g_RandomChatterMaxBotsPerPlayer   = sConfigMgr->GetOption<uint32_t>("OllamaChat.RandomChatterMaxBotsPerPlayer", 2);
+
     g_MaxConcurrentQueries            = sConfigMgr->GetOption<uint32_t>("OllamaChat.MaxConcurrentQueries", 0);
 
     g_EnableRPPersonalities           = sConfigMgr->GetOption<bool>("OllamaChat.EnableRPPersonalities", false);
@@ -259,7 +262,7 @@ void LoadOllamaChatConfig()
     g_EnvCommentEquippedItem    = LoadEnvCommentVector("OllamaChat.EnvCommentEquippedItem", { "Talk about your equipped item {}." });
     g_EnvCommentBagItem         = LoadEnvCommentVector("OllamaChat.EnvCommentBagItem", { "You notice a {} in your bag." });
     g_EnvCommentBagItemSell     = LoadEnvCommentVector("OllamaChat.EnvCommentBagItemSell", { "You are trying persuasively to sell {} of this item {}." });
-    g_EnvCommentSpell           = LoadEnvCommentVector("OllamaChat.EnvCommentSpell", { "Talk about use cases or strategies for your spell '{}'." });
+    g_EnvCommentSpell           = LoadEnvCommentVector("OllamaChat.EnvCommentSpell", { "Discuss possible uses or strategies for '{}', which {} and costs {}.." });
     g_EnvCommentQuestArea       = LoadEnvCommentVector("OllamaChat.EnvCommentQuestArea", { "Suggest you could go questing around {}." });
     g_EnvCommentVendor          = LoadEnvCommentVector("OllamaChat.EnvCommentVendor", { "You spot {} selling wares nearby." });
     g_EnvCommentQuestgiver      = LoadEnvCommentVector("OllamaChat.EnvCommentQuestgiver", { "{} looks like they have {} quests for anyone brave enough." });

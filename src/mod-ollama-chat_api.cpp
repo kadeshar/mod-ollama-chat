@@ -22,6 +22,16 @@ static size_t WriteCallback(void* contents, size_t size, size_t nmemb, void* use
     return totalSize;
 }
 
+std::string ExtractTextBetweenDoubleQuotes(const std::string& response)
+{
+    size_t first = response.find('\"');
+    size_t second = response.find('\"', first + 1);
+    if (first != std::string::npos && second != std::string::npos) {
+        return response.substr(first + 1, second - first - 1);
+    }
+    return response;
+}
+
 // Function to perform the API call.
 std::string QueryOllamaAPI(const std::string& prompt)
 {
@@ -98,8 +108,7 @@ std::string QueryOllamaAPI(const std::string& prompt)
 
     std::string botReply = extractedResponse.str();
 
-    if (!botReply.empty() && botReply.front() == '"' && botReply.back() == '"')
-        botReply = botReply.substr(1, botReply.size() - 2);
+    botReply = ExtractTextBetweenDoubleQuotes(botReply);
 
     if (botReply.empty())
     {

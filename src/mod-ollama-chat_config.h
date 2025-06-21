@@ -24,6 +24,7 @@ extern uint32_t   g_MinRandomInterval;
 extern uint32_t   g_MaxRandomInterval;
 extern float      g_RandomChatterRealPlayerDistance;
 extern uint32_t   g_RandomChatterBotCommentChance;
+extern uint32_t   g_RandomChatterMaxBotsPerPlayer;
 
 extern bool       g_EnableRPPersonalities;
 
