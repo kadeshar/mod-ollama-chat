@@ -25,6 +25,11 @@
 - **Random Chatter:**  
   Bots can periodically initiate random, environment-based chat when a real player is nearby. This feature adds an extra layer of immersion to the game world.
 
+- **Chat Memory (Conversation History):**  
+  Bots now have configurable short-term chat memory. Recent conversations between each player and bot are stored and included as context in every LLM prompt, giving responses better context and continuity.
+
+  Bots now recall your recent interactions—responses will reflect the last several lines of chat with each player.
+
 - **Blacklist for Playerbot Commands:**  
   A configurable blacklist prevents bots from responding to chat messages that start with common playerbot command prefixes, ensuring that administrative commands are not inadvertently processed. Additional commands can be appended via the configuration.
 
@@ -74,6 +79,14 @@
 
 All configuration options for mod-ollama-chat are defined in `mod-ollama-chat.conf`. Key settings include:
 
+- **OllamaChat.Enable:**  
+  Enable or disable the module.  
+  Default: `1` (true)
+
+- **OllamaChat.DisableRepliesInCombat:**  
+  If true, bots will not reply or produce random chatter when in combat.  
+  Default: `true`
+
 - **OllamaChat.SayDistance:**  
   Maximum distance (in game units) a bot must be within to reply on a Say message.  
   Default: `30.0`
@@ -106,6 +119,38 @@ All configuration options for mod-ollama-chat are defined in `mod-ollama-chat.co
   The model identifier for the Ollama API query.  
   Default: `llama3.2:1b`
 
+- **OllamaChat.Temperature:**  
+  Controls model creativity and randomness. Lower values (e.g., 0.2) make replies more focused and predictable; higher values (e.g., 1.0) make replies more creative and varied.  
+  Default: `0.8`
+
+- **OllamaChat.TopP:**  
+  Nucleus sampling parameter for randomness. Lower values restrict the model’s choices, higher values make responses more open and diverse.  
+  Default: `0.95`
+
+- **OllamaChat.RepeatPenalty:**  
+  Discourages the model from repeating phrases. 1.0 = off, higher values reduce repeated output.  
+  Default: `1.1`
+
+- **OllamaChat.NumCtx:**  
+  Sets the maximum context window (in tokens) for each generation. 0 uses the model’s default context size.  
+  Default: `0`
+
+- **OllamaChat.NumPredict:**  
+  Maximum number of tokens the model will generate in a reply. 0 disables the limit (unlimited).  
+  Default: `40`
+
+- **OllamaChat.Stop:**  
+  Comma-separated list of stop sequences. If the model generates any of these strings, output ends immediately.  
+  Example: `User:,Bot:` (leave empty to disable)
+
+- **OllamaChat.SystemPrompt:**  
+  Optional. System prompt to globally influence bot style, persona, or behavior for all replies.  
+  Default: *(empty)*
+
+- **OllamaChat.Seed:**  
+  Optional. Set a numeric value to make model replies deterministic and repeatable.  
+  Default: *(empty)*
+
 - **OllamaChat.EnableRandomChatter:**  
   Enable or disable random chatter from bots.  
   Default: `1` (true)
@@ -121,6 +166,20 @@ All configuration options for mod-ollama-chat are defined in `mod-ollama-chat.co
 - **OllamaChat.EnableRPPersonalities:**  
   Enable distinct roleplay personalities for bots.  
   Default: `0` (false)
+
+- **OllamaChat.ChatHistoryEnabled:**
+  Enable or disable chat history feature.  
+  Default: `1` (true)
+
+- **OllamaChat.MaxConversationHistory:**  
+  The maximum number of recent message pairs (player + bot reply) to track per bot/player combination.  
+  This history is stored in memory and included in the LLM prompt when the same player talks to the bot again.  
+  Default: `5`
+
+- **OllamaChat.ConversationHistorySaveInterval:**  
+  The interval (in minutes) between periodic saves of conversation history from memory to the database.  
+  Set to `0` to disable auto-saving (Bots only store conversations while server is running).  
+  Default: `10`
 
 - **OllamaChat.RandomChatterRealPlayerDistance:**  
   Maximum distance (in game units) a real player must be within to trigger random chatter.  

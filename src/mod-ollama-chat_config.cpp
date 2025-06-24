@@ -18,18 +18,30 @@ uint32_t   g_BotReplyChance    = 10;
 uint32_t   g_MaxBotsToPick     = 2;
 std::string g_OllamaUrl        = "http://localhost:11434/api/generate";
 std::string g_OllamaModel      = "llama3.2:1b";
+uint32_t g_OllamaNumPredict    = 40;
+float       g_OllamaTemperature = 0.8f;
+float       g_OllamaTopP = 0.95f;
+float       g_OllamaRepeatPenalty = 1.1f;
+uint32_t    g_OllamaNumCtx = 0;
+std::string g_OllamaStop = "";
+std::string g_OllamaSystemPrompt = "";
+std::string g_OllamaSeed = "";
 
-// New configuration option: API max concurrent queries (0 means no limit)
-uint32_t   g_MaxConcurrentQueries = 0;
+uint32_t    g_MaxConcurrentQueries = 0;
 
-bool       g_Enable                          = true;
-bool       g_EnableRandomChatter             = true;
-uint32_t   g_MinRandomInterval               = 45;
-uint32_t   g_MaxRandomInterval               = 180;
-float      g_RandomChatterRealPlayerDistance = 40.0f;
-uint32_t   g_RandomChatterBotCommentChance   = 25;
+bool        g_Enable                          = true;
+bool        g_DisableRepliesInCombat          = true;
+bool        g_EnableRandomChatter             = true;
+uint32_t    g_MinRandomInterval               = 45;
+uint32_t    g_MaxRandomInterval               = 180;
+float       g_RandomChatterRealPlayerDistance = 40.0f;
+uint32_t    g_RandomChatterBotCommentChance   = 25;
+uint32_t    g_RandomChatterMaxBotsPerPlayer   = 2;
 
 bool       g_EnableRPPersonalities           = false;
+
+uint32_t g_MaxConversationHistory = 5;
+uint32_t g_ConversationHistorySaveInterval = 10;
 
 std::string g_RandomChatterPromptTemplate;
 
@@ -40,9 +52,21 @@ std::vector<std::string> g_PersonalityKeys;
 std::string g_ChatPromptTemplate;
 std::string g_ChatExtraInfoTemplate;
 
+bool g_EnableChatHistory = true;
+std::string g_ChatHistoryHeaderTemplate;
+std::string g_ChatHistoryLineTemplate;
+std::string g_ChatHistoryFooterTemplate;
+
+std::string g_ChatBotSnapshotTemplate;
+
 bool        g_DebugEnabled = false;
 
 std::string g_DefaultPersonalityPrompt;
+
+// Conversation history store
+std::unordered_map<uint64_t, std::unordered_map<uint64_t, std::deque<std::pair<std::string, std::string>>>> g_BotConversationHistory;
+std::mutex g_ConversationHistoryMutex;
+time_t g_LastHistorySaveTime = 0;
 
 // Default blacklist commands; these are prefixes that indicate the message is a command.
 std::vector<std::string> g_BlacklistCommands = {
@@ -156,18 +180,27 @@ std::string GetMultiLineConfigValue(const std::string& configFilePath, const std
 
 void LoadOllamaChatConfig()
 {
-    g_SayDistance       = sConfigMgr->GetOption<float>("OllamaChat.SayDistance", 30.0f);
-    g_YellDistance      = sConfigMgr->GetOption<float>("OllamaChat.YellDistance", 100.0f);
-    g_GeneralDistance   = sConfigMgr->GetOption<float>("OllamaChat.GeneralDistance", 600.0f);
-    g_PlayerReplyChance = sConfigMgr->GetOption<uint32_t>("OllamaChat.PlayerReplyChance", 90);
-    g_BotReplyChance    = sConfigMgr->GetOption<uint32_t>("OllamaChat.BotReplyChance", 10);
-    g_MaxBotsToPick     = sConfigMgr->GetOption<uint32_t>("OllamaChat.MaxBotsToPick", 2);
-    g_OllamaUrl         = sConfigMgr->GetOption<std::string>("OllamaChat.Url", "http://localhost:11434/api/generate");
-    g_OllamaModel       = sConfigMgr->GetOption<std::string>("OllamaChat.Model", "llama3.2:1b");
+    g_SayDistance                     = sConfigMgr->GetOption<float>("OllamaChat.SayDistance", 30.0f);
+    g_YellDistance                    = sConfigMgr->GetOption<float>("OllamaChat.YellDistance", 100.0f);
+    g_GeneralDistance                 = sConfigMgr->GetOption<float>("OllamaChat.GeneralDistance", 600.0f);
+    g_PlayerReplyChance               = sConfigMgr->GetOption<uint32_t>("OllamaChat.PlayerReplyChance", 90);
+    g_BotReplyChance                  = sConfigMgr->GetOption<uint32_t>("OllamaChat.BotReplyChance", 10);
+    g_MaxBotsToPick                   = sConfigMgr->GetOption<uint32_t>("OllamaChat.MaxBotsToPick", 2);
+    g_OllamaUrl                       = sConfigMgr->GetOption<std::string>("OllamaChat.Url", "http://localhost:11434/api/generate");
+    g_OllamaModel                     = sConfigMgr->GetOption<std::string>("OllamaChat.Model", "llama3.2:1b");
+    g_OllamaNumPredict                = sConfigMgr->GetOption<uint32_t>("OllamaChat.NumPredict", 40);
+    g_OllamaTemperature               = sConfigMgr->GetOption<float>("OllamaChat.Temperature", 0.8f);
+    g_OllamaTopP                      = sConfigMgr->GetOption<float>("OllamaChat.TopP", 0.95f);
+    g_OllamaRepeatPenalty             = sConfigMgr->GetOption<float>("OllamaChat.RepeatPenalty", 1.1f);
+    g_OllamaNumCtx                    = sConfigMgr->GetOption<uint32_t>("OllamaChat.NumCtx", 0);
+    g_OllamaStop                      = sConfigMgr->GetOption<std::string>("OllamaChat.Stop", "");
+    g_OllamaSystemPrompt              = sConfigMgr->GetOption<std::string>("OllamaChat.SystemPrompt", "");
+    g_OllamaSeed                      = sConfigMgr->GetOption<std::string>("OllamaChat.Seed", "");
 
     g_MaxConcurrentQueries            = sConfigMgr->GetOption<uint32_t>("OllamaChat.MaxConcurrentQueries", 0);
 
     g_Enable                          = sConfigMgr->GetOption<bool>("OllamaChat.Enable", true);
+    g_DisableRepliesInCombat          = sConfigMgr->GetOption<bool>("OllamaChat.DisableRepliesInCombat", true);
     g_EnableRandomChatter             = sConfigMgr->GetOption<bool>("OllamaChat.EnableRandomChatter", true);
 
     g_DebugEnabled                    = sConfigMgr->GetOption<bool>("OllamaChat.DebugEnabled", false);
@@ -176,20 +209,32 @@ void LoadOllamaChatConfig()
     g_MaxRandomInterval               = sConfigMgr->GetOption<uint32_t>("OllamaChat.MaxRandomInterval", 180);
     g_RandomChatterRealPlayerDistance = sConfigMgr->GetOption<float>("OllamaChat.RandomChatterRealPlayerDistance", 40.0f);
     g_RandomChatterBotCommentChance   = sConfigMgr->GetOption<uint32_t>("OllamaChat.RandomChatterBotCommentChance", 25);
-    
+    g_RandomChatterMaxBotsPerPlayer   = sConfigMgr->GetOption<uint32_t>("OllamaChat.RandomChatterMaxBotsPerPlayer", 2);
+
     g_MaxConcurrentQueries            = sConfigMgr->GetOption<uint32_t>("OllamaChat.MaxConcurrentQueries", 0);
 
     g_EnableRPPersonalities           = sConfigMgr->GetOption<bool>("OllamaChat.EnableRPPersonalities", false);
 
-    g_RandomChatterPromptTemplate     = sConfigMgr->GetOption<std::string>("OllamaChat.RandomChatterPromptTemplate", "You are a World of Warcraft player in the Wrath of the Lich King expansion. Your name is {}. You are a level {} {}, Race: {}, Gender: {}, Talent Spec: {}, Faction: {}. You are currently located in {}, inside the zone '{}' on map '{}'. Your Personality is '{}'. {} Make it a short statement (under 15 words) using casual WoW-style slang and attitude. Respond as a real WoW player would.");
+    g_RandomChatterPromptTemplate     = sConfigMgr->GetOption<std::string>("OllamaChat.RandomChatterPromptTemplate", "");
 
-    g_ChatPromptTemplate              = sConfigMgr->GetOption<std::string>("OllamaChat.ChatPromptTemplate", "You are a World of Warcraft player in the Wrath of the Lich King expansion version of the game, but you are also knowledgeable about Vanilla WoW and The Burning Crusade. Make sure your responses are relevant to the game lore and context. Your character's name is {} and you are a level {} {}. Your Personality is '{}'. A level {} {} named {} said '{}' in the game chat. Reply (under 15 words) relevant to the message and context. {} Keep your responses natural and unfiltered, just like real WoW players; embrace common slang, faction pride, and rivalry. If someone jokes, joke back. If they’re rude, don’t hold back being rude to them. Show respect to high-level players but be snooty and entitled over lower levels. When giving directions, be precise, using landmarks, flight paths, and major cities for clarity. Keep responses accurate, short and to the point. Be factual about everything like your location, race, class, etc. Do not say you're in a location or are a class or race that you are not. Always prioritize sounding like a real human player.");
+    g_ChatPromptTemplate              = sConfigMgr->GetOption<std::string>("OllamaChat.ChatPromptTemplate", "");
     
-    g_ChatExtraInfoTemplate           = sConfigMgr->GetOption<std::string>("OllamaChat.ChatExtraInfoTemplate", "Your info: Race: {}, Gender: {}, Talent Spec: {}, Faction: {}, Guild: {}, Group: {}, Gold: {}. Other players info: Race: {}, Gender: {}, Talent Spec: {}, Faction: {}, Guild: {}, Group: {}, Gold: {}. Approximate distance between you and other player: {:.1f} yards. {}");
+    g_ChatExtraInfoTemplate           = sConfigMgr->GetOption<std::string>("OllamaChat.ChatExtraInfoTemplate", "");
 
-    g_DefaultPersonalityPrompt        = sConfigMgr->GetOption<std::string>("OllamaChat.DefaultPersonalityPrompt", "Talk like a standard WoW player.");
+    g_DefaultPersonalityPrompt        = sConfigMgr->GetOption<std::string>("OllamaChat.DefaultPersonalityPrompt", "");
 
-    
+    g_MaxConversationHistory          = sConfigMgr->GetOption<uint32_t>("OllamaChat.MaxConversationHistory", 5);
+    g_ConversationHistorySaveInterval = sConfigMgr->GetOption<uint32_t>("OllamaChat.ConversationHistorySaveInterval", 10);
+
+    g_ChatHistoryHeaderTemplate       = sConfigMgr->GetOption<std::string>("OllamaChat.ChatHistoryHeaderTemplate", "");
+    g_ChatHistoryLineTemplate         = sConfigMgr->GetOption<std::string>("OllamaChat.ChatHistoryLineTemplate", "");
+    g_ChatHistoryFooterTemplate       = sConfigMgr->GetOption<std::string>("OllamaChat.ChatHistoryFooterTemplate", "");
+
+    g_ChatBotSnapshotTemplate         = sConfigMgr->GetOption<std::string>("OllamaChat.ChatBotSnapshotTemplate", "");
+
+    g_EnableChatHistory               = sConfigMgr->GetOption<bool>("OllamaChat.EnableChatHistory", true);
+
+
     // Load extra blacklist commands from config (comma-separated list)
     std::string extraBlacklist = sConfigMgr->GetOption<std::string>("OllamaChat.BlacklistCommands", "");
     if (!extraBlacklist.empty())
@@ -231,18 +276,18 @@ void LoadOllamaChatConfig()
     };
 
 
-    g_EnvCommentCreature        = LoadEnvCommentVector("OllamaChat.EnvCommentCreature", { "You spot a creature named '{}'." });
-    g_EnvCommentGameObject      = LoadEnvCommentVector("OllamaChat.EnvCommentGameObject", { "You see {} nearby." });
-    g_EnvCommentEquippedItem    = LoadEnvCommentVector("OllamaChat.EnvCommentEquippedItem", { "Talk about your equipped item {}." });
-    g_EnvCommentBagItem         = LoadEnvCommentVector("OllamaChat.EnvCommentBagItem", { "You notice a {} in your bag." });
-    g_EnvCommentBagItemSell     = LoadEnvCommentVector("OllamaChat.EnvCommentBagItemSell", { "You are trying persuasively to sell {} of this item {}." });
-    g_EnvCommentSpell           = LoadEnvCommentVector("OllamaChat.EnvCommentSpell", { "Talk about use cases or strategies for your spell '{}'." });
-    g_EnvCommentQuestArea       = LoadEnvCommentVector("OllamaChat.EnvCommentQuestArea", { "Suggest you could go questing around {}." });
-    g_EnvCommentVendor          = LoadEnvCommentVector("OllamaChat.EnvCommentVendor", { "You spot {} selling wares nearby." });
-    g_EnvCommentQuestgiver      = LoadEnvCommentVector("OllamaChat.EnvCommentQuestgiver", { "{} looks like they have {} quests for anyone brave enough." });
-    g_EnvCommentBagSlots        = LoadEnvCommentVector("OllamaChat.EnvCommentBagSlots", { "You have {} free bag slots left." });
-    g_EnvCommentDungeon         = LoadEnvCommentVector("OllamaChat.EnvCommentDungeon", { "You're in a Dungeon instance named '{}' talk about the Dungeon or one of its Bosses." });
-    g_EnvCommentUnfinishedQuest = LoadEnvCommentVector("OllamaChat.EnvCommentUnfinishedQuest", { "Say the name of and talk about your un-finished quest '{}'." });
+    g_EnvCommentCreature        = LoadEnvCommentVector("OllamaChat.EnvCommentCreature", { "" });
+    g_EnvCommentGameObject      = LoadEnvCommentVector("OllamaChat.EnvCommentGameObject", { "" });
+    g_EnvCommentEquippedItem    = LoadEnvCommentVector("OllamaChat.EnvCommentEquippedItem", { "" });
+    g_EnvCommentBagItem         = LoadEnvCommentVector("OllamaChat.EnvCommentBagItem", { "" });
+    g_EnvCommentBagItemSell     = LoadEnvCommentVector("OllamaChat.EnvCommentBagItemSell", { "" });
+    g_EnvCommentSpell           = LoadEnvCommentVector("OllamaChat.EnvCommentSpell", { "" });
+    g_EnvCommentQuestArea       = LoadEnvCommentVector("OllamaChat.EnvCommentQuestArea", { "" });
+    g_EnvCommentVendor          = LoadEnvCommentVector("OllamaChat.EnvCommentVendor", { "" });
+    g_EnvCommentQuestgiver      = LoadEnvCommentVector("OllamaChat.EnvCommentQuestgiver", { "" });
+    g_EnvCommentBagSlots        = LoadEnvCommentVector("OllamaChat.EnvCommentBagSlots", { "" });
+    g_EnvCommentDungeon         = LoadEnvCommentVector("OllamaChat.EnvCommentDungeon", { "" });
+    g_EnvCommentUnfinishedQuest = LoadEnvCommentVector("OllamaChat.EnvCommentUnfinishedQuest", { "" });
 
     LOG_INFO("server.loading",
              "[mod-ollama-chat] Config loaded: Enabled = {}, SayDistance = {}, YellDistance = {}, "
@@ -278,6 +323,34 @@ void LoadPersonalityTemplatesFromDB()
     } while (result->NextRow());
 }
 
+void LoadBotConversationHistoryFromDB()
+{
+    QueryResult result = CharacterDatabase.Query(
+        "SELECT bot_guid, player_guid, player_message, bot_reply FROM mod_ollama_chat_history ORDER BY timestamp ASC"
+    );
+    if (!result)
+        return;
+
+    std::lock_guard<std::mutex> lock(g_ConversationHistoryMutex);
+    g_BotConversationHistory.clear();
+
+    do {
+        uint64_t botGuid = (*result)[0].Get<uint64_t>();
+        uint64_t playerGuid = (*result)[1].Get<uint64_t>();
+        std::string playerMsg = (*result)[2].Get<std::string>();
+        std::string botReply = (*result)[3].Get<std::string>();
+
+        auto& playerHistory = g_BotConversationHistory[botGuid][playerGuid];
+        playerHistory.push_back({ playerMsg, botReply });
+        while (playerHistory.size() > g_MaxConversationHistory)
+        {
+            playerHistory.pop_front();
+        }
+
+    } while (result->NextRow());
+
+}
+
 
 // Definition of the configuration WorldScript.
 OllamaChatConfigWorldScript::OllamaChatConfigWorldScript() : WorldScript("OllamaChatConfigWorldScript") { }
@@ -287,4 +360,6 @@ void OllamaChatConfigWorldScript::OnStartup()
     curl_global_init(CURL_GLOBAL_ALL);
     LoadOllamaChatConfig();
     LoadBotPersonalityList();
+    LoadBotConversationHistoryFromDB();
+
 }
