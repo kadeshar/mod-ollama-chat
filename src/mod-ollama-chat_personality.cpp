@@ -16,7 +16,7 @@ std::string GetBotPersonality(Player* bot)
     {
         if(g_DebugEnabled)
         {
-            LOG_INFO("server.loading", "Using existing personality '{}' for bot {}", it->second, bot->GetName());
+            LOG_INFO("server.loading", "[Ollama Chat] Using existing personality '{}' for bot {}", it->second, bot->GetName());
         }
         return it->second;
     }
@@ -43,7 +43,7 @@ std::string GetBotPersonality(Player* bot)
 
         if(g_DebugEnabled)
         {
-            LOG_INFO("server.loading", "Using database personality '{}' for bot {}", dbPersonality, bot->GetName());
+            LOG_INFO("server.loading", "[Ollama Chat] Using database personality '{}' for bot {}", dbPersonality, bot->GetName());
         }
         return dbPersonality;
     }
@@ -67,7 +67,7 @@ std::string GetBotPersonality(Player* bot)
 
     if(g_DebugEnabled)
     {
-        LOG_INFO("server.loading", "Assigned new personality '{}' to bot {}", chosenPersonality, bot->GetName());
+        LOG_INFO("server.loading", "[Ollama Chat] Assigned new personality '{}' to bot {}", chosenPersonality, bot->GetName());
     }
     return chosenPersonality;
 }
