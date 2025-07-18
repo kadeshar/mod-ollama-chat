@@ -36,6 +36,18 @@
 - **Asynchronous Response Handling:**  
   Chat responses are generated on separate threads to avoid blocking the main server loop, ensuring smooth server performance.
 
+- **Live Configuration & Personality Reload:**  
+  Reload the module’s config and personality packs in-game or from the server console, without restarting.
+
+- **Event-Based Chatter:**  
+  Player bots now comment on key in-game events such as quest completion, rare loot, deaths, PvP kills, leveling up, duels, learning spells, and achievements. Remarks are context-aware, immersive, and personality-driven, making the world feel much more alive.
+
+- **Think Mode Support:**  
+  Bots can leverage LLM models that have reasoning/think modes. Enable internal reasoning for models that support it by setting `OllamaChat.ThinkModeEnableForModule = 1` in **mod-ollama-chat.conf**. When enabled, the API request includes the `think` flag and the bot omits all `thinking` responses from its final reply.
+
+- **Live Reload for Personalities and Settings:**  
+  Instantly reload all mod-ollama-chat configuration and personality packs in-game using the `.ollama reload` command with a GM level account or use `ollama reload` from the server console. No server restart required—updates to `.conf` or personality packs (`.sql` files) are applied immediately.
+
 ## Installation
 
 > [!IMPORTANT]
@@ -77,141 +89,36 @@
 
 ## Configuration Options
 
-All configuration options for mod-ollama-chat are defined in `mod-ollama-chat.conf`. Key settings include:
-
-- **OllamaChat.Enable:**  
-  Enable or disable the module.  
-  Default: `1` (true)
-
-- **OllamaChat.DisableRepliesInCombat:**  
-  If true, bots will not reply or produce random chatter when in combat.  
-  Default: `true`
-
-- **OllamaChat.SayDistance:**  
-  Maximum distance (in game units) a bot must be within to reply on a Say message.  
-  Default: `30.0`
-
-- **OllamaChat.YellDistance:**  
-  Maximum distance for Yell messages.  
-  Default: `100.0`
-
-- **OllamaChat.GeneralDistance:**  
-  Maximum distance for custom chat channels.  
-  Default: `600.0`
-
-- **OllamaChat.PlayerReplyChance:**  
-  Percentage chance that a bot replies when a real player speaks.  
-  Default: `90`
-
-- **OllamaChat.BotReplyChance:**  
-  Percentage chance that a bot replies when another bot speaks.  
-  Default: `10`
-
-- **OllamaChat.MaxBotsToPick:**  
-  Maximum number of bots randomly chosen to reply when no bot is directly mentioned.  
-  Default: `2`
-
-- **OllamaChat.Url:**  
-  URL of the Ollama API endpoint.  
-  Default: `http://localhost:11434/api/generate`
-
-- **OllamaChat.Model:**  
-  The model identifier for the Ollama API query.  
-  Default: `llama3.2:1b`
-
-- **OllamaChat.Temperature:**  
-  Controls model creativity and randomness. Lower values (e.g., 0.2) make replies more focused and predictable; higher values (e.g., 1.0) make replies more creative and varied.  
-  Default: `0.8`
-
-- **OllamaChat.TopP:**  
-  Nucleus sampling parameter for randomness. Lower values restrict the model’s choices, higher values make responses more open and diverse.  
-  Default: `0.95`
-
-- **OllamaChat.RepeatPenalty:**  
-  Discourages the model from repeating phrases. 1.0 = off, higher values reduce repeated output.  
-  Default: `1.1`
-
-- **OllamaChat.NumCtx:**  
-  Sets the maximum context window (in tokens) for each generation. 0 uses the model’s default context size.  
-  Default: `0`
-
-- **OllamaChat.NumPredict:**  
-  Maximum number of tokens the model will generate in a reply. 0 disables the limit (unlimited).  
-  Default: `40`
-
-- **OllamaChat.Stop:**  
-  Comma-separated list of stop sequences. If the model generates any of these strings, output ends immediately.  
-  Example: `User:,Bot:` (leave empty to disable)
-
-- **OllamaChat.SystemPrompt:**  
-  Optional. System prompt to globally influence bot style, persona, or behavior for all replies.  
-  Default: *(empty)*
-
-- **OllamaChat.Seed:**  
-  Optional. Set a numeric value to make model replies deterministic and repeatable.  
-  Default: *(empty)*
-
-- **OllamaChat.EnableRandomChatter:**  
-  Enable or disable random chatter from bots.  
-  Default: `1` (true)
-
-- **OllamaChat.MinRandomInterval:**  
-  Minimum interval (in seconds) between random bot chat messages.  
-  Default: `45`
-
-- **OllamaChat.MaxRandomInterval:**  
-  Maximum interval (in seconds) between random bot chat messages.  
-  Default: `180`
-
-- **OllamaChat.EnableRPPersonalities:**  
-  Enable distinct roleplay personalities for bots.  
-  Default: `0` (false)
-
-- **OllamaChat.ChatHistoryEnabled:**
-  Enable or disable chat history feature.  
-  Default: `1` (true)
-
-- **OllamaChat.MaxConversationHistory:**  
-  The maximum number of recent message pairs (player + bot reply) to track per bot/player combination.  
-  This history is stored in memory and included in the LLM prompt when the same player talks to the bot again.  
-  Default: `5`
-
-- **OllamaChat.ConversationHistorySaveInterval:**  
-  The interval (in minutes) between periodic saves of conversation history from memory to the database.  
-  Set to `0` to disable auto-saving (Bots only store conversations while server is running).  
-  Default: `10`
-
-- **OllamaChat.RandomChatterRealPlayerDistance:**  
-  Maximum distance (in game units) a real player must be within to trigger random chatter.  
-  Default: `40.0`
-
-- **OllamaChat.RandomChatterBotCommentChance:**  
-  Percentage chance that a bot adds a random comment when random chatter is triggered.  
-  Default: `25`
-
-- **OllamaChat.BlacklistCommands:**  
-  Comma-separated list of command prefixes that should be ignored by bots.  
-  Default: *(empty)*
-
-- **OllamaChat.MaxConcurrentQueries:**  
-  Maximum number of concurrent API queries allowed. Use `0` for no limit.  
-  Default: `0`
-
 > For a complete list of all available configuration options with comments and defaults, see `mod-ollama-chat.conf.dist` included in this repository.
 
 ## How It Works
 
-1. **Chat Handling:**  
-   When a player sends a chat message, the module determines the channel type and checks if the message starts with any blacklisted command prefix. If it does, the bot will not respond.
+1. **Chat Filtering and Triggering**  
+   When a player (or bot) sends a chat message, the module checks the message’s type, distance, and if it starts with any configured blacklist command prefix. Only eligible messages in range and not matching the blacklist will trigger a bot response.
 
-2. **Prompt Generation:**  
-   For eligible messages, the module gathers detailed context about both the bot and the player (including class, race, faction, guild, and more) and appends a comprehensive WoW cheat sheet to the prompt. The cheat sheet covers lore, terminology, key locations, and communication style from Vanilla WoW, The Burning Crusade, and Wrath of the Lich King.
+2. **Bot Selection**  
+   The system gathers all bots within the relevant distance, determines eligibility based on player/bot reply chance, and caps responses per message using `MaxBotsToPick` and related settings.
 
-3. **LLM Query:**  
-   The generated prompt is sent to the Ollama API asynchronously. The API’s response is then routed back through the appropriate chat channel by the bot.
+3. **Prompt Assembly**  
+   For each reply, a prompt is assembled by combining configurable templates with live in-game context: bot/player class, race, gender, role/spec, faction, guild, level, zone, gold, group, environment info, personality, and if enabled, recent chat history between that player and the bot.
 
-4. **Personality & Random Chatter:**  
-   Bots have assigned personality types that affect their responses. Additionally, bots may randomly generate environment-based chatter when real players are nearby.
+4. **LLM Request**  
+   The prompt is sent to the Ollama API using the configured model and parameters. All LLM requests run asynchronously, ensuring no lag or blocking of the server.
+
+5. **Response Routing**  
+   Bot responses are routed back through the appropriate chat channel in game, whether it’s say, yell, party or general.
+
+6. **Personality Management**  
+   If RP personalities are enabled, each bot uses its assigned personality template. Personality definitions can be changed on the fly and reloaded live—no server restart required.
+
+7. **Random & Event-Based Chatter**  
+   In addition to responding to direct chat, bots will occasionally generate random environment-aware lines when real players are nearby, and will also react to key in-game events (e.g., PvP/PvE kills, loot, deaths, quests, duels, level-ups, achievements, using objects) using context-specific templates and personalities.
+
+8. **Live Reloading**  
+   You can hot-reload the module config and personality packs in-game using the `.ollama reload` GM command or from the server console. All changes take effect immediately without requiring a restart.
+
+9. **Fully Configurable**  
+   All settings—reply logic, distances, frequencies, blacklist, prompt templates, chat history, personalities, random/event chatter, LLM params, and more—are controlled via `mod-ollama-chat.conf` and can be adjusted and reloaded live at any time.
 
 ## Personality Packs
 

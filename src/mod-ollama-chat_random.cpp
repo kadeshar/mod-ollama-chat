@@ -10,6 +10,7 @@
 #include "fmt/core.h"
 #include "mod-ollama-chat_api.h"
 #include "mod-ollama-chat_personality.h"
+#include "mod-ollama-chat-utilities.h"
 #include "GridNotifiersImpl.h"
 #include "CellImpl.h"
 #include "Map.h"
@@ -24,7 +25,6 @@
 #include "AiFactory.h"
 #include "ObjectMgr.h"
 #include "QuestDef.h"
-
 
 OllamaBotRandomChatter::OllamaBotRandomChatter() : WorldScript("OllamaBotRandomChatter") {}
 
@@ -48,7 +48,7 @@ void OllamaBotRandomChatter::OnUpdate(uint32 diff)
     static uint32_t timer = 0;
     if (timer <= diff)
     {
-        timer = 30000; // ~30-second check
+        timer = 30000;
         HandleRandomChatter();
     }
     else
@@ -61,7 +61,6 @@ void OllamaBotRandomChatter::HandleRandomChatter()
 {
     auto const& allPlayers = ObjectAccessor::GetPlayers();
 
-    // Find all real players
     std::vector<Player*> realPlayers;
     for (auto const& itr : allPlayers)
     {
@@ -73,10 +72,8 @@ void OllamaBotRandomChatter::HandleRandomChatter()
 
     std::unordered_set<uint64_t> processedBotsThisTick;
 
-    // For each real player, process up to N bots in range
     for (Player* realPlayer : realPlayers)
     {
-        // Gather all bots within range of this real player
         std::vector<Player*> botsInRange;
         for (auto const& itr : allPlayers)
         {
@@ -85,7 +82,7 @@ void OllamaBotRandomChatter::HandleRandomChatter()
             if (!ai) continue;
             if (!bot->IsInWorld() || bot->IsBeingTeleported()) continue;
             if (bot->GetDistance(realPlayer) > g_RandomChatterRealPlayerDistance) continue;
-            if (processedBotsThisTick.count(bot->GetGUID().GetRawValue())) continue; // No double-processing
+            if (processedBotsThisTick.count(bot->GetGUID().GetRawValue())) continue;
             botsInRange.push_back(bot);
         }
 
@@ -99,7 +96,7 @@ void OllamaBotRandomChatter::HandleRandomChatter()
             {
                 continue;
             }
-            
+
             PlayerbotAI* ai = sPlayerbotsMgr->GetPlayerbotAI(bot);
             uint64_t guid = bot->GetGUID().GetRawValue();
 
@@ -122,7 +119,7 @@ void OllamaBotRandomChatter::HandleRandomChatter()
             std::string environmentInfo;
             std::vector<std::string> candidateComments;
 
-            // Check for nearby creature within g_SayDistance
+            // Creature
             {
                 Unit* unitInRange = nullptr;
                 Acore::AnyUnitInObjectRangeCheck creatureCheck(bot, g_SayDistance);
@@ -132,12 +129,11 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                     if (!g_EnvCommentCreature.empty()) {
                         uint32_t idx = g_EnvCommentCreature.size() == 1 ? 0 : urand(0, g_EnvCommentCreature.size() - 1);
                         std::string templ = g_EnvCommentCreature[idx];
-                        candidateComments.push_back(fmt::format(templ, fmt::arg("creature_name", unitInRange->ToCreature()->GetName())));
+                        candidateComments.push_back(SafeFormat(templ, fmt::arg("creature_name", unitInRange->ToCreature()->GetName())));
                     }
-
             }
 
-            // Check for nearby game object within g_SayDistance
+            // Game Object
             {
                 Acore::GameObjectInRangeCheck goCheck(bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ(), g_SayDistance);
                 GameObject* goInRange = nullptr;
@@ -149,20 +145,18 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                         uint32_t idx = g_EnvCommentGameObject.size() == 1 ? 0 : urand(0, g_EnvCommentGameObject.size() - 1);
                         std::string templ = g_EnvCommentGameObject[idx];
                         std::string gameObjectName = goInRange->GetName();
-                        candidateComments.push_back(fmt::format(templ, fmt::arg("object_name", gameObjectName)));
+                        candidateComments.push_back(SafeFormat(templ, fmt::arg("object_name", gameObjectName)));
                     }
                 }
-
             }
 
-            // Check for a random equipped item
+            // Equipped Item
             {
                 std::vector<Item*> equippedItems;
                 for (uint8_t slot = EQUIPMENT_SLOT_START; slot < EQUIPMENT_SLOT_END; ++slot)
-                {
                     if (Item* item = bot->GetItemByPos(slot))
                         equippedItems.push_back(item);
-                }
+
                 if (!equippedItems.empty())
                 {
                     uint32_t eqIdx = equippedItems.size() == 1 ? 0 : urand(0, equippedItems.size() - 1);
@@ -170,13 +164,12 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                     if (!g_EnvCommentEquippedItem.empty()) {
                         uint32_t tempIdx = g_EnvCommentEquippedItem.size() == 1 ? 0 : urand(0, g_EnvCommentEquippedItem.size() - 1);
                         std::string templ = g_EnvCommentEquippedItem[tempIdx];
-                        candidateComments.push_back(fmt::format(templ, fmt::arg("item_name", randomEquipped->GetTemplate()->Name1)));
+                        candidateComments.push_back(SafeFormat(templ, fmt::arg("item_name", randomEquipped->GetTemplate()->Name1)));
                     }
                 }
-
             }
 
-            // Check for a random bag item (iterating over bag slots 0 to 4)
+            // Bag Item
             {
                 std::vector<Item*> bagItems;
                 for (uint32_t bagSlot = 0; bagSlot < 5; ++bagSlot)
@@ -184,39 +177,34 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                     if (Bag* bag = bot->GetBagByPos(bagSlot))
                     {
                         for (uint32_t i = 0; i < bag->GetBagSize(); ++i)
-                        {
                             if (Item* bagItem = bag->GetItemByPos(i))
                                 bagItems.push_back(bagItem);
-                        }
                     }
                 }
                 if (!bagItems.empty())
                 {
                     uint32_t bagIdx = bagItems.size() == 1 ? 0 : urand(0, bagItems.size() - 1);
                     Item* randomBagItem = bagItems[bagIdx];
+
                     if (!g_EnvCommentBagItem.empty()) {
                         uint32_t tempIdx = g_EnvCommentBagItem.size() == 1 ? 0 : urand(0, g_EnvCommentBagItem.size() - 1);
                         std::string templ = g_EnvCommentBagItem[tempIdx];
-                        candidateComments.push_back(fmt::format(templ,
-                            fmt::arg("item_count", randomBagItem->GetCount()),
-                            fmt::arg("item_description", ai->GetChatHelper()->FormatItem(randomBagItem->GetTemplate(), randomBagItem->GetCount()))
-                        ));
+                        candidateComments.push_back(SafeFormat(templ, fmt::arg("item_name", randomBagItem->GetTemplate()->Name1)));
                     }
+
                     if (!g_EnvCommentBagItemSell.empty()) {
                         uint32_t tempIdx = g_EnvCommentBagItemSell.size() == 1 ? 0 : urand(0, g_EnvCommentBagItemSell.size() - 1);
                         std::string templ = g_EnvCommentBagItemSell[tempIdx];
-                        candidateComments.push_back(fmt::format(templ,
+                        candidateComments.push_back(SafeFormat(templ,
                             fmt::arg("item_count", randomBagItem->GetCount()),
-                            fmt::arg("item_description", ai->GetChatHelper()->FormatItem(randomBagItem->GetTemplate(), randomBagItem->GetCount()))
+                            fmt::arg("item_name", randomBagItem->GetTemplate()->Name1)
                         ));
                     }
                 }
-
             }
 
-            // Check for a random known spell
+            // Spell
             {
-                // Build a vector of valid "active" spells for this bot.
                 struct NamedSpell
                 {
                     uint32 id;
@@ -290,7 +278,7 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                     {
                         uint32_t tempIdx = g_EnvCommentSpell.size() == 1 ? 0 : urand(0, g_EnvCommentSpell.size() - 1);
                         std::string templ = g_EnvCommentSpell[tempIdx];
-                        candidateComments.push_back(fmt::format(
+                        candidateComments.push_back(SafeFormat(
                             templ,
                             fmt::arg("spell_name", randomSpell.name),
                             fmt::arg("spell_effect", randomSpell.effect),
@@ -298,11 +286,9 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                         ));
                     }
                 }
-
             }
 
-
-            // Check for an area to quest in.
+            // Quest Area
             {
                 std::vector<std::string> questAreas;
                 for (auto const& qkv : sObjectMgr->GetQuestTemplates())
@@ -320,9 +306,8 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                         if (!g_EnvCommentQuestArea.empty()) {
                             uint32_t idx = g_EnvCommentQuestArea.size() == 1 ? 0 : urand(0, g_EnvCommentQuestArea.size() - 1);
                             std::string templ = g_EnvCommentQuestArea[idx];
-                            questAreas.push_back(fmt::format(templ, fmt::arg("quest_area", area->area_name[LocaleConstant::LOCALE_enUS])));
+                            questAreas.push_back(SafeFormat(templ, fmt::arg("quest_area", area->area_name[LocaleConstant::LOCALE_enUS])));
                         }
-
                     }
                 }
                 if (!questAreas.empty())
@@ -330,11 +315,9 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                     uint32_t qIdx = questAreas.size() == 1 ? 0 : urand(0, questAreas.size() - 1);
                     candidateComments.push_back(questAreas[qIdx]);
                 }
-
-
             }
 
-            // Check for Vendor nearby
+            // Vendor
             {
                 Unit* unit = nullptr;
                 Acore::AnyUnitInObjectRangeCheck check(bot, g_SayDistance);
@@ -349,13 +332,13 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                         if (!g_EnvCommentVendor.empty()) {
                             uint32_t idx = g_EnvCommentVendor.size() == 1 ? 0 : urand(0, g_EnvCommentVendor.size() - 1);
                             std::string templ = g_EnvCommentVendor[idx];
-                            candidateComments.push_back(fmt::format(templ, fmt::arg("vendor_name", vendor->GetName())));
+                            candidateComments.push_back(SafeFormat(templ, fmt::arg("vendor_name", vendor->GetName())));
                         }
                     }
                 }
             }
 
-            // Check for Questgiver nearby
+            // Questgiver
             {
                 Unit* unit = nullptr;
                 Acore::AnyUnitInObjectRangeCheck check(bot, g_SayDistance);
@@ -372,7 +355,7 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                         if (!g_EnvCommentQuestgiver.empty()) {
                             uint32_t idx = g_EnvCommentQuestgiver.size() == 1 ? 0 : urand(0, g_EnvCommentQuestgiver.size() - 1);
                             std::string templ = g_EnvCommentQuestgiver[idx];
-                            candidateComments.push_back(fmt::format(templ,
+                            candidateComments.push_back(SafeFormat(templ,
                                 fmt::arg("questgiver_name", giver->GetName()),
                                 fmt::arg("quest_count", n)
                             ));
@@ -381,7 +364,7 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                 }
             }
 
-            // Check for Free bag slots (manual count)
+            // Free bag slots
             {
                 int freeSlots = 0;
                 for (uint8 i = INVENTORY_SLOT_ITEM_START; i < INVENTORY_SLOT_ITEM_END; ++i)
@@ -394,11 +377,11 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                 if (!g_EnvCommentBagSlots.empty()) {
                     uint32_t idx = g_EnvCommentBagSlots.size() == 1 ? 0 : urand(0, g_EnvCommentBagSlots.size() - 1);
                     std::string templ = g_EnvCommentBagSlots[idx];
-                    candidateComments.push_back(fmt::format(templ, fmt::arg("bag_slots", freeSlots)));
+                    candidateComments.push_back(SafeFormat(templ, fmt::arg("bag_slots", freeSlots)));
                 }
             }
 
-            // Check for Dungeon context
+            // Dungeon
             {
                 if (bot->GetMap() && bot->GetMap()->IsDungeon())
                 {
@@ -406,12 +389,12 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                     if (!g_EnvCommentDungeon.empty()) {
                         uint32_t idx = g_EnvCommentDungeon.size() == 1 ? 0 : urand(0, g_EnvCommentDungeon.size() - 1);
                         std::string templ = g_EnvCommentDungeon[idx];
-                        candidateComments.push_back(fmt::format(templ, fmt::arg("dungeon_name", name)));
+                        candidateComments.push_back(SafeFormat(templ, fmt::arg("dungeon_name", name)));
                     }
                 }
             }
 
-            // Check for Random incomplete quest in log
+            // Unfinished Quest
             {
                 std::vector<std::string> unfinished;
                 for (auto const& qs : bot->getQuestStatusMap())
@@ -422,7 +405,7 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                             if (!g_EnvCommentUnfinishedQuest.empty()) {
                                 uint32_t idx = g_EnvCommentUnfinishedQuest.size() == 1 ? 0 : urand(0, g_EnvCommentUnfinishedQuest.size() - 1);
                                 std::string templ = g_EnvCommentUnfinishedQuest[idx];
-                                unfinished.push_back(fmt::format(templ, fmt::arg("quest_name", qt->GetTitle())));
+                                unfinished.push_back(SafeFormat(templ, fmt::arg("quest_name", qt->GetTitle())));
                             }
                     }
                 }
@@ -431,7 +414,6 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                     uint32_t uIdx = unfinished.size() == 1 ? 0 : urand(0, unfinished.size() - 1);
                     candidateComments.push_back(unfinished[uIdx]);
                 }
-
             }
 
             if (!candidateComments.empty())
@@ -467,7 +449,7 @@ void OllamaBotRandomChatter::HandleRandomChatter()
                 std::string botZoneName = botCurrentZone ? botAI->GetLocalizedAreaName(botCurrentZone) : "UnknownZone";
                 std::string botMapName  = bot->GetMap() ? bot->GetMap()->GetMapName() : "UnknownMap";
 
-                std::string prompt = fmt::format(
+                std::string prompt = SafeFormat(
                     g_RandomChatterPromptTemplate,
                     fmt::arg("bot_name", botName),
                     fmt::arg("bot_level", botLevel),
@@ -489,50 +471,46 @@ void OllamaBotRandomChatter::HandleRandomChatter()
 
             if(g_DebugEnabled)
             {
-                LOG_INFO("server.loading", "Random Message Prompt: {} ", prompt);
+                LOG_INFO("server.loading", "[Ollama Chat] Random Message Prompt: {} ", prompt);
             }
 
             uint64_t botGuid = bot->GetGUID().GetRawValue();
 
-            std::thread([botGuid, prompt]()
-            {
-                Player* botPtr = ObjectAccessor::FindPlayer(ObjectGuid(botGuid));
-                if (!botPtr) return;
-                std::string response = QueryOllamaAPI(prompt);
-                if (response.empty()) return;
-                botPtr = ObjectAccessor::FindPlayer(ObjectGuid(botGuid));
-                if (!botPtr) return;
-                PlayerbotAI* botAI = sPlayerbotsMgr->GetPlayerbotAI(botPtr);
-                if (!botAI) return;
-                if (botPtr->GetGroup())
-                {
-                    botAI->SayToParty(response);
-                }
-                else
-                {
-                    std::vector<std::string> channels = {"General", "Say"};
-                    std::random_device rd;
-                    std::mt19937 gen(rd());
-                    std::uniform_int_distribution<size_t> dist(0, channels.size() - 1);
-                    std::string selectedChannel = channels[dist(gen)];
-                    if (selectedChannel == "Say")
-                    {
-                        if(g_DebugEnabled)
-                        {
-                            LOG_INFO("server.loading", "Bot Random Chatter Say: {}", response);
+            std::thread([botGuid, prompt]() {
+                try {
+                    Player* botPtr = ObjectAccessor::FindPlayer(ObjectGuid(botGuid));
+                    if (!botPtr) return;
+                    std::string response = QueryOllamaAPI(prompt);
+                    if (response.empty()) return;
+                    botPtr = ObjectAccessor::FindPlayer(ObjectGuid(botGuid));
+                    if (!botPtr) return;
+                    PlayerbotAI* botAI = sPlayerbotsMgr->GetPlayerbotAI(botPtr);
+                    if (!botAI) return;
+                    if (botPtr->GetGroup())
+                        botAI->SayToParty(response);
+                    else {
+                        std::vector<std::string> channels = {"General", "Say"};
+                        std::random_device rd;
+                        std::mt19937 gen(rd());
+                        std::uniform_int_distribution<size_t> dist(0, channels.size() - 1);
+                        std::string selectedChannel = channels[dist(gen)];
+                        if (selectedChannel == "Say") {
+                            if (g_DebugEnabled)
+                                LOG_INFO("server.loading", "[Ollama Chat] Bot Random Chatter Say: {}", response);
+                            botAI->Say(response);
+                        } else if (selectedChannel == "General") {
+                            if (g_DebugEnabled)
+                                LOG_INFO("server.loading", "[Ollama Chat] Bot Random Chatter General: {}", response);
+                            botAI->SayToChannel(response, ChatChannelId::GENERAL);
                         }
-                        botAI->Say(response);
                     }
-                    else if (selectedChannel == "General")
-                    {
-                        if(g_DebugEnabled)
-                        {
-                            LOG_INFO("server.loading", "Bot Random Chatter General: {}", response);
-                        }
-                        botAI->SayToChannel(response, ChatChannelId::GENERAL);
-                    }
+                } catch (const std::exception& e) {
+                    LOG_ERROR("server.loading", "[Ollama Chat] Exception in random chatter thread: {}", e.what());
+                } catch (...) {
+                    LOG_ERROR("server.loading", "[Ollama Chat] Unknown exception in random chatter thread");
                 }
             }).detach();
+
 
             nextRandomChatTime[guid] = now + urand(g_MinRandomInterval, g_MaxRandomInterval);
         }

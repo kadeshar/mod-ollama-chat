@@ -4,65 +4,124 @@
 #include <string>
 #include <cstdint>
 #include <vector>
+#include <deque>
+#include <unordered_map>
+#include <mutex>
+#include <ctime>
 #include "ScriptMgr.h"  // Ensure WorldScript is defined
 
-extern float            g_SayDistance;
-extern float            g_YellDistance;
-extern float            g_GeneralDistance;
-extern uint32_t         g_PlayerReplyChance;
-extern uint32_t         g_BotReplyChance;
-extern uint32_t         g_MaxBotsToPick;
-extern std::string      g_OllamaUrl;
-extern std::string      g_OllamaModel;
-extern uint32_t         g_OllamaNumPredict;
-extern float            g_OllamaTemperature;
-extern float            g_OllamaTopP;
-extern float            g_OllamaRepeatPenalty;
-extern uint32_t         g_OllamaNumCtx;
-extern std::string      g_OllamaStop;
-extern std::string      g_OllamaSystemPrompt;
-extern std::string      g_OllamaSeed;
+// --------------------------------------------
+// Distance/Range Configuration
+// --------------------------------------------
+extern float      g_SayDistance;
+extern float      g_YellDistance;
+extern float      g_GeneralDistance;
+extern float      g_RandomChatterRealPlayerDistance;
+extern float      g_EventChatterRealPlayerDistance;
 
-extern uint32_t         g_MaxConcurrentQueries;
+// --------------------------------------------
+// Bot/Player Chatter Probability & Limits
+// --------------------------------------------
+extern uint32_t   g_PlayerReplyChance;
+extern uint32_t   g_BotReplyChance;
+extern uint32_t   g_MaxBotsToPick;
+extern uint32_t   g_RandomChatterBotCommentChance;
+extern uint32_t   g_RandomChatterMaxBotsPerPlayer;
+extern uint32_t   g_EventChatterBotCommentChance;
+extern uint32_t   g_EventChatterBotSelfCommentChance;
+extern uint32_t   g_EventChatterMaxBotsPerPlayer;
 
-extern bool             g_Enable;
-extern bool             g_DisableRepliesInCombat;
-extern bool             g_EnableRandomChatter;
-extern bool             g_DebugEnabled;
-extern uint32_t         g_MinRandomInterval;
-extern uint32_t         g_MaxRandomInterval;
-extern float            g_RandomChatterRealPlayerDistance;
-extern uint32_t         g_RandomChatterBotCommentChance;
-extern uint32_t         g_RandomChatterMaxBotsPerPlayer;
+// --------------------------------------------
+// Ollama LLM API Configuration
+// --------------------------------------------
+extern std::string g_OllamaUrl;
+extern std::string g_OllamaModel;
+extern uint32_t    g_OllamaNumPredict;
+extern float       g_OllamaTemperature;
+extern float       g_OllamaTopP;
+extern float       g_OllamaRepeatPenalty;
+extern uint32_t    g_OllamaNumCtx;
+extern std::string g_OllamaStop;
+extern std::string g_OllamaSystemPrompt;
+extern std::string g_OllamaSeed;
 
-extern bool             g_EnableRPPersonalities;
+// --------------------------------------------
+// Concurrency/Queueing
+// --------------------------------------------
+extern uint32_t    g_MaxConcurrentQueries;
 
-extern std::unordered_map<uint64_t, std::unordered_map<uint64_t, std::deque<std::pair<std::string, std::string>>>> g_BotConversationHistory;
-extern std::mutex       g_ConversationHistoryMutex;
-extern uint32_t         g_MaxConversationHistory;
-extern uint32_t         g_ConversationHistorySaveInterval;
-extern time_t           g_LastHistorySaveTime;
+// --------------------------------------------
+// Feature Toggles & Core Settings
+// --------------------------------------------
+extern bool        g_Enable;
+extern bool        g_DisableRepliesInCombat;
+extern bool        g_EnableRandomChatter;
+extern bool        g_EnableEventChatter;
+extern bool        g_EnableRPPersonalities;
+extern bool        g_DebugEnabled;
 
-extern std::string      g_ChatHistoryHeaderTemplate;
-extern std::string      g_ChatHistoryLineTemplate;
-extern std::string      g_ChatHistoryFooterTemplate;
-extern bool             g_EnableChatHistory;
+// --------------------------------------------
+// Random Chatter Timing
+// --------------------------------------------
+extern uint32_t    g_MinRandomInterval;
+extern uint32_t    g_MaxRandomInterval;
 
-extern std::string      g_RandomChatterPromptTemplate;
+// --------------------------------------------
+// Conversation History Settings
+// --------------------------------------------
+extern uint32_t    g_MaxConversationHistory;
+extern uint32_t    g_ConversationHistorySaveInterval;
 
+// --------------------------------------------
+// Prompt Templates
+// --------------------------------------------
+extern std::string g_RandomChatterPromptTemplate;
+extern std::string g_EventChatterPromptTemplate;
+extern std::string g_ChatPromptTemplate;
+extern std::string g_ChatExtraInfoTemplate;
+
+// --------------------------------------------
+// Personality and Prompt Data
+// --------------------------------------------
 extern std::unordered_map<uint64_t, std::string> g_BotPersonalityList;
 extern std::unordered_map<std::string, std::string> g_PersonalityPrompts;
 extern std::vector<std::string> g_PersonalityKeys;
+extern std::string g_DefaultPersonalityPrompt;
 
-extern std::string      g_ChatPromptTemplate;
-extern std::string      g_ChatExtraInfoTemplate;
+// --------------------------------------------
+// Chat History Templates and Toggles
+// --------------------------------------------
+extern bool        g_EnableChatHistory;
+extern std::string g_ChatHistoryHeaderTemplate;
+extern std::string g_ChatHistoryLineTemplate;
+extern std::string g_ChatHistoryFooterTemplate;
 
-extern std::string      g_ChatBotSnapshotTemplate;
+// --------------------------------------------
+// Chatbot Snapshot Template
+// --------------------------------------------
+extern bool        g_EnableChatBotSnapshotTemplate;
+extern std::string g_ChatBotSnapshotTemplate;
 
+// --------------------------------------------
+// Conversation History Store and Mutex
+// --------------------------------------------
+extern std::unordered_map<uint64_t, std::unordered_map<uint64_t, std::deque<std::pair<std::string, std::string>>>> g_BotConversationHistory;
+extern std::mutex   g_ConversationHistoryMutex;
+extern time_t       g_LastHistorySaveTime;
+
+// --------------------------------------------
+// Blacklist: Prefixes for Commands (not chat)
+// --------------------------------------------
 extern std::vector<std::string> g_BlacklistCommands;
 
-extern std::string      g_DefaultPersonalityPrompt;
+// --------------------------------------------
+// Think Mode Support
+// --------------------------------------------
+extern bool g_ThinkModeEnableForModule;
 
+// --------------------------------------------
+// Environment/Contextual Random Chatter Templates
+// --------------------------------------------
 extern std::vector<std::string> g_EnvCommentCreature;
 extern std::vector<std::string> g_EnvCommentGameObject;
 extern std::vector<std::string> g_EnvCommentEquippedItem;
@@ -76,13 +135,36 @@ extern std::vector<std::string> g_EnvCommentBagSlots;
 extern std::vector<std::string> g_EnvCommentDungeon;
 extern std::vector<std::string> g_EnvCommentUnfinishedQuest;
 
-// Loads configuration
-void LoadOllamaChatConfig();
+// --------------------------------------------
+// Event Chatter: Event Type Strings
+// These control the event type string sent to eventChatter for world event prompts.
+// Values are loaded from conf (see mod_ollama_chat.conf.dist)
+// --------------------------------------------
+extern std::string g_EventTypeDefeated;           // "defeated"
+extern std::string g_EventTypeDefeatedPlayer;     // "defeated player"
+extern std::string g_EventTypePetDefeated;        // "pet defeated"
+extern std::string g_EventTypeGotItem;            // "got item"
+extern std::string g_EventTypeDied;               // "died"
+extern std::string g_EventTypeCompletedQuest;     // "completed quest"
+extern std::string g_EventTypeLearnedSpell;       // "learned spell"
+extern std::string g_EventTypeRequestedDuel;      // "requested to duel"
+extern std::string g_EventTypeStartedDueling;     // "started dueling"
+extern std::string g_EventTypeWonDuel;            // "won duel against"
+extern std::string g_EventTypeLeveledUp;          // "leveled up"
+extern std::string g_EventTypeAchievement;        // "earned achievement"
+extern std::string g_EventTypeUsedObject;         // "used object"
 
+// --------------------------------------------
+// Loader Functions
+// --------------------------------------------
+void LoadOllamaChatConfig();
+void LoadBotPersonalityList();
+void LoadBotConversationHistoryFromDB();
 void LoadPersonalityTemplatesFromDB();
 
-
+// --------------------------------------------
 // Declaration of the configuration WorldScript.
+// --------------------------------------------
 class OllamaChatConfigWorldScript : public WorldScript
 {
 public:

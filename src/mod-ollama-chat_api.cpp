@@ -40,7 +40,7 @@ std::string QueryOllamaAPI(const std::string& prompt)
     {
         if(g_DebugEnabled)
         {
-            LOG_INFO("server.loading", "Failed to initialize cURL.");
+            LOG_INFO("server.loading", "[Ollama Chat] Failed to initialize cURL.");
         }
         return "Hmm... I'm lost in thought.";
     }
@@ -76,6 +76,16 @@ std::string QueryOllamaAPI(const std::string& prompt)
     if (!g_OllamaSystemPrompt.empty())   requestData["system"]          = g_OllamaSystemPrompt;
     if (!g_OllamaSeed.empty())           requestData["seed"]            = g_OllamaSeed;
 
+    if (g_ThinkModeEnableForModule)
+    {
+        if(g_DebugEnabled)
+        {
+            LOG_INFO("server.loading", "[Ollama Chat] LLM set to Think mode.");
+        }
+        requestData["think"] = true;
+        requestData["hidethinking"] = true;
+    }
+
     std::string requestDataStr = requestData.dump();
 
     struct curl_slist* headers = nullptr;
@@ -99,7 +109,7 @@ std::string QueryOllamaAPI(const std::string& prompt)
         if(g_DebugEnabled)
         {
             LOG_INFO("server.loading",
-                    "Failed to reach Ollama AI. cURL error: {}",
+                    "[Ollama Chat] Failed to reach Ollama AI. cURL error: {}",
                     curl_easy_strerror(res));
         }
         return "Failed to reach Ollama AI.";
@@ -113,9 +123,15 @@ std::string QueryOllamaAPI(const std::string& prompt)
     {
         while (std::getline(ss, line))
         {
+            if (line.empty() || std::all_of(line.begin(), line.end(), isspace))
+                continue;
+
             nlohmann::json jsonResponse = nlohmann::json::parse(line);
-            if (jsonResponse.contains("response"))
+
+            if (jsonResponse.contains("response") && !jsonResponse["response"].get<std::string>().empty())
+            {
                 extractedResponse << jsonResponse["response"].get<std::string>();
+            }
         }
     }
     catch (const std::exception& e)
@@ -123,7 +139,7 @@ std::string QueryOllamaAPI(const std::string& prompt)
         if(g_DebugEnabled)
         {
             LOG_INFO("server.loading",
-                    "JSON Parsing Error: {}",
+                    "[Ollama Chat] JSON Parsing Error: {}",
                     e.what());
         }
         return "Error processing response.";
@@ -137,15 +153,24 @@ std::string QueryOllamaAPI(const std::string& prompt)
     {
         if(g_DebugEnabled)
         {
-            LOG_INFO("server.loading", "No valid response extracted.");
+            LOG_INFO("server.loading", "[Ollama Chat] No valid response extracted.");
         }
         return "I'm having trouble understanding.";
     }
 
     if(g_DebugEnabled)
     {
-        LOG_INFO("server.loading", "Parsed bot response: {}", botReply);
+        LOG_INFO("server.loading", "[Ollama Chat] Parsed bot response: {}", botReply);
+
+        if (g_ThinkModeEnableForModule)
+        {
+            if(g_DebugEnabled)
+            {
+                LOG_INFO("server.loading", "[Ollama Chat] Bot used think.");
+            }
+        }
     }
+
     return botReply;
 }
 
