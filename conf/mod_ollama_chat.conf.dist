@@ -507,26 +507,36 @@ OllamaChat.EventTypeUsedObject = used object
 # GUILD-SPECIFIC RANDOM CHATTER
 # --------------------------------------------
 
-# OllamaChat.EnableGuildRandomChatter
+# OllamaChat.EnableGuildRandomAmbientChatter
+#     Description: Enable or disable random ambient guild chatter from bots in guilds with real players online.
+#     Default:     1 (true)
+OllamaChat.EnableGuildRandomAmbientChatter = 1
+
+# OllamaChat.GuildRandomChatterChance
+#     Description: Percent chance (0-100) for a bot to send a random guild chat message when eligible.
+#     Default:     10
+OllamaChat.GuildRandomChatterChance = 10
+
+# OllamaChat.EnableGuildEventChatter
 #     Description: Enable guild-specific random chatter for bots in guilds with real players.
 #                  When enabled, bots will make guild-related comments and use guild chat.
 #                  Only activates when real players are online in the same guild as the bot.
 #     Default: 1 (true)
-OllamaChat.EnableGuildRandomChatter = 1
+OllamaChat.EnableGuildEventChatter = 1
 
 # OllamaChat.GuildChatterBotCommentChance
 #     Description: Percentage chance (0-100) for guild bots to comment on guild events.
 #                  This applies to events like level ups, gear acquisition, dungeon completion.
 #                  Lower values = less frequent guild event responses.
-#     Default: 1
-OllamaChat.GuildChatterBotCommentChance = 1
+#     Default: 25
+OllamaChat.GuildChatterBotCommentChance = 25
 
 # OllamaChat.GuildChatterMaxBotsPerEvent
 #     Description: Maximum number of guild bots that can respond to a single guild event.
 #                  Prevents spam when multiple guild bots want to comment on the same event.
 #                  Example: If set to 2, only 2 bots max will respond to a member leveling up.
-#     Default: 1
-OllamaChat.GuildChatterMaxBotsPerEvent = 1
+#     Default: 2
+OllamaChat.GuildChatterMaxBotsPerEvent = 2
 
 # --------------------------------------------
 # GUILD ENVIRONMENT COMMENT TEMPLATES
@@ -575,28 +585,51 @@ OllamaChat.GuildEnvCommentGuildInfo = Our guild info reads: {guild_info}|Check o
 OllamaChat.GuildEnvCommentGuildOnlineMembers = We have {online_count} out of {total_count} guild members online.|{online_count} guildies are online right now.|Nice to see {online_count} guild members active today.|Only {online_count} of us online from the guild.
 
 # --------------------------------------------
+# GUILD RANDOM CHATTER PROMPTS
+# --------------------------------------------
+
+# OllamaChat.GuildEnvCommentGuildRaid
+#     Description: Templates for commenting on guild raid activity. Pipe-separated (|) list.
+#     Example: "Looking forward to the next guild raid!"
+#     Default: (empty - no raid comments)
+OllamaChat.GuildEnvCommentGuildRaid = Looking forward to the next guild raid!|Hope we get some good loot in the next raid.|Who's ready for raid night?
+
+# OllamaChat.GuildEnvCommentGuildEndgame
+#     Description: Templates for commenting on endgame content. Pipe-separated (|) list.
+#     Example: "Endgame content is tough but fun."
+#     Default: (empty - no endgame comments)
+OllamaChat.GuildEnvCommentGuildEndgame = Endgame content is tough but fun.|We need more people for endgame runs.|Anyone up for some endgame challenges?
+
+# OllamaChat.GuildEnvCommentGuildStrategy
+#     Description: Templates for discussing guild strategies. Pipe-separated (|) list.
+#     Example: "We should try a new strategy for the next boss."
+#     Default: (empty - no strategy comments)
+OllamaChat.GuildEnvCommentGuildStrategy = We should try a new strategy for the next boss.|Strategy is key to our success.|Let's discuss tactics for the next fight.
+
+# OllamaChat.GuildEnvCommentGuildGroup
+#     Description: Templates for group/quest/grind activity. Pipe-separated (|) list.
+#     Example: "Anyone want to group up for quests?"
+#     Default: (empty - no group comments)
+OllamaChat.GuildEnvCommentGuildGroup = Anyone want to group up for quests?|Grinding with guildies is more fun.|Let's form a group for dailies.
+
+# OllamaChat.GuildEnvCommentGuildPvP
+#     Description: Templates for guild PvP activity. Pipe-separated (|) list.
+#     Example: "Who's up for some PvP tonight?"
+#     Default: (empty - no PvP comments)
+OllamaChat.GuildEnvCommentGuildPvP = Who's up for some PvP tonight?|PvP with the guild is always intense.|Let's queue for some battlegrounds together.
+
+# OllamaChat.GuildEnvCommentGuildCommunity
+#     Description: Templates for community/social comments. Pipe-separated (|) list.
+#     Example: "Guild community is the best part of the game."
+#     Default: (empty - no community comments)
+OllamaChat.GuildEnvCommentGuildCommunity = Guild community is the best part of the game.|Love hanging out with everyone here.|Our guild socials are always a blast.
+
+# --------------------------------------------
 # GUILD EVENT TYPES
 # --------------------------------------------
 
-# OllamaChat.GuildEventTypeLevelUp
-#     Description: Event type for guild level up announcements.
-#                  Triggered when a guild member levels up.
-#                  Bots will use this event type to respond in guild chat.
-#     Example:     "Congratulations on hitting level 80!"
-#     Default:     guild member leveled up
-OllamaChat.GuildEventTypeLevelUp = guild member leveled up
-
-# OllamaChat.GuildEventTypeDungeonComplete
-#     Description: Event type for guild dungeon completion announcements.
-#                  Triggered when a guild member completes a quest while in a dungeon.
-#                  Helps celebrate dungeon achievements in guild chat.
-#     Example:     "Nice work clearing that dungeon!"
-#     Default:     guild member completed dungeon
-OllamaChat.GuildEventTypeDungeonComplete = guild member completed dungeon
-
 # OllamaChat.GuildEventTypeEpicGear
 #     Description: Event type for guild epic gear acquisition announcements.
-#                  Triggered when a guild member obtains epic (purple) quality gear.
 #                  Creates excitement and congratulations for rare loot.
 #     Example:     "Grats on the epic loot!"
 #     Default:     guild member got epic gear
@@ -617,6 +650,14 @@ OllamaChat.GuildEventTypeRareGear = guild member got rare gear
 #     Example:     "Welcome to the guild!"
 #     Default:     member joined guild
 OllamaChat.GuildEventTypeGuildJoin = member joined guild
+
+# OllamaChat.GuildEventTypeGuildLogin
+#     Description: Event type for guild member login announcements.
+#                  Triggered when a non-bot guild member logs in.
+#                  Welcomes returning members to the guild.
+#     Example:     "{actor_name} has logged in to the guild!"
+#     Default:     member logged in
+OllamaChat.GuildEventTypeGuildLogin = member logged in
 
 # OllamaChat.GuildEventTypeGuildLeave
 #     Description: Event type for guild member leave announcements.
@@ -641,3 +682,27 @@ OllamaChat.GuildEventTypeGuildPromotion = member got promoted
 #     Example:     "Rank changes happen."
 #     Default:     member got demoted
 OllamaChat.GuildEventTypeGuildDemotion = member got demoted
+
+# OllamaChat.GuildEventTypeGuildAchievement
+#     Description: Event type for guild member achievement announcements.
+#                  Triggered when a real (non-bot) guild member earns an achievement.
+#                  Celebrates player accomplishments in the guild.
+#     Example:     "{actor_name} just earned an achievement!"
+#     Default:     member earned achievement
+OllamaChat.GuildEventTypeGuildAchievement = member earned achievement
+
+# OllamaChat.GuildEventTypeLevelUp
+#     Description: Event type for guild member level up announcements.
+#                  Triggered when a guild member levels up.
+#                  Celebrates player progression in the guild.
+#     Example:     "Grats on the level up!"
+#     Default:     member leveled up
+OllamaChat.GuildEventTypeLevelUp = member leveled up
+
+# OllamaChat.GuildEventTypeDungeonComplete
+#     Description: Event type for guild dungeon completion announcements.
+#                  Triggered when a guild group completes a dungeon.
+#                  Recognizes group achievements in PvE content.
+#     Example:     "Dungeon run complete!"
+#     Default:     guild group completed a dungeon
+OllamaChat.GuildEventTypeDungeonComplete = guild group completed a dungeon
