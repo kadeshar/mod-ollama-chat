@@ -9,7 +9,7 @@ class OllamaBotEventChatter
 {
 public:
     void DispatchGameEvent(Player* source, std::string type, std::string detail);
-    void QueueEvent(Player* bot, std::string type, std::string detail, std::string actorName);
+    void QueueEvent(Player* bot, std::string type, std::string detail, std::string actorName, bool isGuildEvent = false);
     std::string BuildPrompt(Player* bot, std::string promptTemplate, std::string eventType, std::string eventDetail, std::string actorName);
 };
 
@@ -79,6 +79,15 @@ class ChatOnGameObjectUse : public PlayerScript
 public:
     ChatOnGameObjectUse();
     void OnGameObjectUse(Player* player, GameObject* go);
+};
+
+class ChatOnGuildMemberChange : public PlayerScript
+{
+public:
+    ChatOnGuildMemberChange();
+    void OnGuildMemberJoin(Player* player, Guild* guild);
+    void OnGuildMemberLeave(Player* player, Guild* guild);
+    void OnGuildMemberRankChange(Player* player, Guild* guild, uint8 oldRank, uint8 newRank);
 };
 
 

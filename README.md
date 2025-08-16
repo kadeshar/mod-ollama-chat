@@ -2,10 +2,14 @@
   <img src="./icon.png" alt="Ollama Chat Module" title="Ollama Chat Module Icon">
 </p>
 
+
 # AzerothCore + Playerbots Module: mod-ollama-chat
 
+
 > [!CAUTION]
-> This module is very early stages and can bog down your server due to the nature of running local LLM. Please proceed with this in mind.
+> **LLM/AI Disclaimer:** Large Language Models (LLMs) such as those used by this module do not possess intelligence, reasoning, or true understanding. They generate text by predicting the most likely next word based on patterns in their training data—matching vectors, not thinking or comprehension. The quality and relevance of responses depend entirely on the model you use, its training data, and its configuration. Results may vary, and sometimes the output may be irrelevant, nonsensical, or simply not work as expected. This is a fundamental limitation of current AI and LLM technology. Use with realistic expectations.
+>
+> This module is also in development and can bog down your server due to the nature of running local LLM. Please proceed with this in mind.
 
 ## Overview
 
@@ -51,15 +55,14 @@
 ## Installation
 
 > [!IMPORTANT]
-> Prerequisite dependencies have only been verified to work on macOS Monterey 12.7.6.  
-> If you encounter any issues or resolve problems related to dependencies on your OS, please open an issue describing the problem, the solution, and your OS version. I will update the README accordingly.
+> **Cross-Platform Support**: This module now uses cpp-httplib (header-only) instead of curl, eliminating compilation issues on Windows and simplifying installation on all platforms.
 
 1. **Prerequisites:**
    - Ensure you have liyunfan1223's AzerothCore (https://github.com/liyunfan1223/azerothcore-wotlk) installation with the Player Bots (https://github.com/liyunfan1223/mod-playerbots) module enabled.
    - The module depends on:
-     - cURL (https://curl.se/libcurl/)
-     - fmtlib (https://github.com/fmtlib/fmt)
-     - nlohmann/json (https://github.com/nlohmann/json)
+     - fmtlib (https://github.com/fmtlib/fmt) - For string formatting
+     - nlohmann/json (https://github.com/nlohmann/json) - For JSON processing
+     - cpp-httplib (https://github.com/yhirose/cpp-httplib) - Header-only HTTP library (included, no installation needed)
      - Ollama LLM support – set up a local instance of the Ollama API server with the model of your choice. More details at https://ollama.com
 
 2. **Clone the Module:**
@@ -126,7 +129,7 @@
 
 - To use a Personality Pack, download or create a `.sql` file named in the format `YYYY_MM_DD_personality_pack_NAME.sql`.
 
-- Place the `.sql` file in `modules/mod-ollama-chat/data/sql/characters/base/`.
+- Place the `.sql` file in `modules/mod-ollama-chat/data/sql/characters/updates/`.
 
 - The module will automatically detect and apply any new Personality Packs when the server starts or updates—no manual SQL import required.
 

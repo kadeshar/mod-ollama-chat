@@ -1,4 +1,5 @@
 #include "Log.h"
+#include "Language.h"
 #include "Player.h"
 #include "Chat.h"
 #include "Channel.h"
@@ -27,6 +28,7 @@
 #include "mod-ollama-chat_personality.h"
 #include "mod-ollama-chat_config.h"
 #include "mod-ollama-chat-utilities.h"
+#include "mod-ollama-chat_sentiment.h"
 #include <iomanip>
 #include "SpellMgr.h"
 #include "SpellInfo.h"
@@ -47,7 +49,7 @@
 
 // Forward declarations for internal helper functions.
 static bool IsBotEligibleForChatChannelLocal(Player* bot, Player* player,
-                                             ChatChannelSourceLocal source, Channel* channel = nullptr);
+                                             ChatChannelSourceLocal source, Channel* channel = nullptr, Player* receiver = nullptr);
 static std::string GenerateBotPrompt(Player* bot, std::string playerMessage, Player* player);
 
 const char* ChatChannelSourceLocalStr[] =
@@ -55,9 +57,11 @@ const char* ChatChannelSourceLocalStr[] =
     "Undefined",
     "Say",
     "Party",
-    "Raid",
+    "Raid", 
     "Guild",
+    "Officer",
     "Yell",
+    "Whisper",
     "General"
 };
 
@@ -78,17 +82,26 @@ ChatChannelSourceLocal GetChannelSourceLocal(uint32_t type)
 {
     switch (type)
     {
-        case 1:
+        case CHAT_MSG_SAY:
             return SRC_SAY_LOCAL;
-        case 51:
+        case CHAT_MSG_PARTY:
+        case CHAT_MSG_PARTY_LEADER:
             return SRC_PARTY_LOCAL;
-        case 3:
+        case CHAT_MSG_RAID:
+        case CHAT_MSG_RAID_LEADER:
+        case CHAT_MSG_RAID_WARNING:
             return SRC_RAID_LOCAL;
-        case 5:
+        case CHAT_MSG_GUILD:
             return SRC_GUILD_LOCAL;
-        case 6:
+        case CHAT_MSG_OFFICER:
+            return SRC_OFFICER_LOCAL;
+        case CHAT_MSG_YELL:
             return SRC_YELL_LOCAL;
-        case 17:
+        case CHAT_MSG_WHISPER:
+        case CHAT_MSG_WHISPER_FOREIGN:
+        case CHAT_MSG_WHISPER_INFORM:
+            return SRC_WHISPER_LOCAL;
+        case CHAT_MSG_CHANNEL:
             return SRC_GENERAL_LOCAL;
         default:
             return SRC_UNDEFINED_LOCAL;
@@ -115,7 +128,7 @@ void PlayerBotChatHandler::OnPlayerChat(Player* player, uint32_t type, uint32_t 
         return;
 
     ChatChannelSourceLocal sourceLocal = GetChannelSourceLocal(type);
-    ProcessChat(player, type, lang, msg, sourceLocal, nullptr);
+    ProcessChat(player, type, lang, msg, sourceLocal, nullptr, nullptr);
 }
 
 void PlayerBotChatHandler::OnPlayerChat(Player* player, uint32_t type, uint32_t lang, std::string& msg, Group* /*group*/)
@@ -124,7 +137,16 @@ void PlayerBotChatHandler::OnPlayerChat(Player* player, uint32_t type, uint32_t 
         return;
 
     ChatChannelSourceLocal sourceLocal = GetChannelSourceLocal(type);
-    ProcessChat(player, type, lang, msg, sourceLocal, nullptr);
+    ProcessChat(player, type, lang, msg, sourceLocal, nullptr, nullptr);
+}
+
+void PlayerBotChatHandler::OnPlayerChat(Player* player, uint32_t type, uint32_t lang, std::string& msg, Guild* /*guild*/)
+{
+    if (!g_Enable)
+        return;
+
+    ChatChannelSourceLocal sourceLocal = GetChannelSourceLocal(type);
+    ProcessChat(player, type, lang, msg, sourceLocal, nullptr, nullptr);
 }
 
 void PlayerBotChatHandler::OnPlayerChat(Player* player, uint32_t type, uint32_t lang, std::string& msg, Channel* channel)
@@ -133,7 +155,67 @@ void PlayerBotChatHandler::OnPlayerChat(Player* player, uint32_t type, uint32_t 
         return;
 
     ChatChannelSourceLocal sourceLocal = GetChannelSourceLocal(type);
-    ProcessChat(player, type, lang, msg, sourceLocal, channel);
+    ProcessChat(player, type, lang, msg, sourceLocal, channel, nullptr);
+}
+
+bool PlayerBotChatHandler::OnPlayerCanUseChat(Player* player, uint32_t type, uint32_t lang, std::string& msg, Player* receiver)
+{
+    // Only handle whispers for our module
+    if (type != CHAT_MSG_WHISPER)
+        return true;
+    
+    // Only process if our module is enabled
+    if (!g_Enable)
+        return true;
+    
+    // Check if this is a valid whisper to a bot
+    if (!receiver || !player || player == receiver)
+        return true;
+    
+    // Check if sender is a bot - if so, don't trigger Ollama responses for bot-to-bot whispers
+    PlayerbotAI* senderAI = sPlayerbotsMgr->GetPlayerbotAI(player);
+    if (senderAI && senderAI->IsBotAI())
+    {
+        return true;
+    }
+    
+    PlayerbotAI* receiverAI = sPlayerbotsMgr->GetPlayerbotAI(receiver);
+    if (!receiverAI || !receiverAI->IsBotAI())
+        return true;
+    
+    if (g_DebugEnabled)
+    {
+        LOG_INFO("server.loading", "[Ollama Chat] OnPlayerCanUseChat called: player={}, type={}, receiver={}", 
+                player->GetName(), type, receiver ? receiver->GetName() : "null");
+    }
+    
+    // Process the chat immediately in OnPlayerCanUseChat to prevent double processing
+    ChatChannelSourceLocal sourceLocal = GetChannelSourceLocal(type);
+    ProcessChat(player, type, lang, msg, sourceLocal, nullptr, receiver);
+    
+    // Return false to prevent the message from being processed again in OnPlayerChat
+    return true;
+}
+
+void PlayerBotChatHandler::OnPlayerChat(Player* player, uint32_t type, uint32_t lang, std::string& msg, Player* receiver)
+{
+    // This method should now only handle non-whisper messages or cases where OnPlayerCanUseChat returned true
+    if (!g_Enable)
+        return;
+
+    // Skip whispers since they're handled in OnPlayerCanUseChat
+    if (type == CHAT_MSG_WHISPER)
+        return;
+
+    if(g_DebugEnabled)
+    {
+        LOG_INFO("server.loading", "[Ollama Chat] OnPlayerChat with receiver called: player={}, type={}, receiver={}", 
+                player->GetName(), type, receiver ? receiver->GetName() : "null");
+    }
+
+    // Handle other chat types (non-whisper)
+    ChatChannelSourceLocal sourceLocal = GetChannelSourceLocal(type);
+    ProcessChat(player, type, lang, msg, sourceLocal, nullptr, receiver);
 }
 
 void AppendBotConversation(uint64_t botGuid, uint64_t playerGuid, const std::string& playerMessage, const std::string& botReply)
@@ -518,7 +600,7 @@ static std::string GenerateBotGameStateSnapshot(Player* bot)
 }
 
 
-void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32_t /*lang*/, std::string& msg, ChatChannelSourceLocal sourceLocal, Channel* channel)
+void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32_t lang, std::string& msg, ChatChannelSourceLocal sourceLocal, Channel* channel, Player* receiver)
 {
     if (player == nullptr) {
         LOG_ERROR("server.loading", "[Ollama Chat] ProcessChat: player is null");
@@ -527,24 +609,34 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
     if (msg.empty()) {
         return;
     }
+    if (lang == LANG_ADDON) return;
     std::string chanName = (channel != nullptr) ? channel->GetName() : "Unknown";
     uint32_t channelId = (channel != nullptr) ? channel->GetChannelId() : 0;
+    std::string receiverName = (receiver != nullptr) ? receiver->GetName() : "None";
     if(g_DebugEnabled)
     {
         LOG_INFO("server.loading",
-                "[Ollama Chat] Player {} sent msg: '{}' | Channel Name: {} | Channel ID: {}",
-                player->GetName(), msg, chanName, channelId);
+                "[Ollama Chat] Player {} sent msg: '{}' | Source: {} | Channel Name: {} | Channel ID: {} | Receiver: {}",
+                player->GetName(), msg, (int)sourceLocal, chanName, channelId, receiverName);
     }
+
+
+    auto startsWithWord = [](const std::string& text, const std::string& word) {
+        if (text.size() < word.size()) return false;
+        if (text.compare(0, word.size(), word) != 0) return false;
+        // If exact length match or next char is whitespace/punctuation, it's a word
+        return text.size() == word.size() || !std::isalnum((unsigned char)text[word.size()]);
+    };
 
     std::string trimmedMsg = rtrim(msg);
     for (const std::string& blacklist : g_BlacklistCommands)
     {
-        if (trimmedMsg.find(blacklist) == 0)
+        if (startsWithWord(trimmedMsg, blacklist))
         {
-            if(g_DebugEnabled)
-            {
-                LOG_INFO("server.loading", "[Ollama Chat] Message starts with '{}' (blacklisted). Skipping bot responses.", blacklist);
-            }
+            if (g_DebugEnabled)
+                LOG_INFO("server.loading",
+                         "[Ollama Chat] Message starts with '{}' (blacklisted). Skipping bot responses.",
+                         blacklist);
             return;
         }
     }
@@ -553,35 +645,137 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
     bool senderIsBot = (senderAI && senderAI->IsBotAI());
     
     std::vector<Player*> eligibleBots;
-    if (channel != nullptr)
+    
+    // Handle different chat sources differently
+    if (sourceLocal == SRC_WHISPER_LOCAL && receiver != nullptr)
     {
-        ChannelMgr* cMgr = ChannelMgr::forTeam(static_cast<TeamId>(player->GetTeamId()));
-        Channel* senderChannel = cMgr->GetChannel(channel->GetName(), player);
-        if (senderChannel)
+        if(g_DebugEnabled)
         {
-            auto const& allPlayers = ObjectAccessor::GetPlayers();
-            for (auto const& itr : allPlayers)
+            LOG_INFO("server.loading", "[Ollama Chat] Processing whisper from {} to {}", 
+                    player->GetName(), receiver->GetName());
+        }
+        
+        // Skip bot-to-bot whispers to prevent Ollama responses
+        if (senderIsBot)
+        {
+            return;
+        }
+        
+        // For whispers, only the receiver bot can respond (if it's a bot)
+        PlayerbotAI* receiverAI = sPlayerbotsMgr->GetPlayerbotAI(receiver);
+        if (receiverAI && receiverAI->IsBotAI())
+        {
+            eligibleBots.push_back(receiver);
+            if(g_DebugEnabled)
             {
-                Player* candidate = itr.second;
-                if (!candidate->IsInWorld())
-                    continue;
-                ChannelMgr* candidateCM = ChannelMgr::forTeam(static_cast<TeamId>(candidate->GetTeamId()));
-                Channel* candidateChannel = candidateCM->GetChannel(channel->GetName(), candidate);
-                if (candidateChannel && candidateChannel->GetChannelId() == senderChannel->GetChannelId())
-                {
-                    eligibleBots.push_back(candidate);
-                }
+                LOG_INFO("server.loading", "[Ollama Chat] Found eligible bot {} for whisper", receiver->GetName());
             }
         }
+        else if(g_DebugEnabled)
+        {
+            LOG_INFO("server.loading", "[Ollama Chat] Whisper target {} is not a bot or has no AI", receiver->GetName());
+        }
     }
-    else
+    else if (channel != nullptr)
     {
+        // For channel chat, find all bots that are in the same channel instance
+        if(g_DebugEnabled)
+        {
+            LOG_INFO("server.loading", "[Ollama Chat] Processing channel message in '{}' (ID: {})", 
+                    channel->GetName(), channel->GetChannelId());
+        }
+        
+        // Verify the original channel is valid before proceeding
+        if (!channel)
+        {
+            if(g_DebugEnabled)
+            {
+                LOG_ERROR("server.loading", "[Ollama Chat] Channel is null, cannot process channel message");
+            }
+            return;
+        }
+        
+        // For channel chat, simply find all bots in the same zone as the player
         auto const& allPlayers = ObjectAccessor::GetPlayers();
         for (auto const& itr : allPlayers)
         {
             Player* candidate = itr.second;
-            if (candidate->IsInWorld())
-                eligibleBots.push_back(candidate);
+            if (!candidate || candidate == player)
+                continue;
+                
+            // Skip non-bots early
+            PlayerbotAI* candidateAI = sPlayerbotsMgr->GetPlayerbotAI(candidate);
+            if (!candidateAI || !candidateAI->IsBotAI())
+                continue;
+                
+            // Only include regular player accounts
+            if (!AccountMgr::IsPlayerAccount(candidate->GetSession()->GetSecurity()))
+                continue;
+            
+            // Check if this is a local or global channel
+            bool isLocalChannel = (channel->GetName().find("General -") != std::string::npos || 
+                                  channel->GetName().find("Trade -") != std::string::npos ||
+                                  channel->GetName().find("LocalDefense -") != std::string::npos);
+            
+            bool isGlobalChannel = (channel->GetName().find("World") != std::string::npos || channel->GetName().find("LookingForGroup") != std::string::npos);
+        
+            // For local channels, bot must be in same zone as player
+            if (isLocalChannel)
+            {
+                // ZONE CHECK: Bot must be in exact same zone as player
+                if (candidate->GetZoneId() != player->GetZoneId())
+                {
+                    if(g_DebugEnabled)
+                    {
+                        //LOG_ERROR("server.loading", "[Ollama Chat] Bot {} FAILED zone check - Bot zone: {}, Player zone: {}, Channel: '{}'", candidate->GetName(), candidate->GetZoneId(), player->GetZoneId(), channel->GetName());
+                    }
+                    continue; // SKIP this bot - wrong zone
+                }
+            }
+            // For global channels like World, no zone restriction
+            
+            // FACTION CHECK: For non-global channels, ensure same faction
+            if (candidate->GetTeamId() != player->GetTeamId())
+            {
+                if (!isGlobalChannel)
+                {
+                    if(g_DebugEnabled)
+                    {
+                        //LOG_ERROR("server.loading", "[Ollama Chat] Bot {} FAILED faction check - Bot: {}, Player: {}, Channel: '{}'", candidate->GetName(), (int)candidate->GetTeamId(), (int)player->GetTeamId(), channel->GetName());
+                    }
+                    continue; // SKIP this bot - wrong faction
+                }
+            }
+            
+            // ONLY add bots that passed ALL verifications
+            eligibleBots.push_back(candidate);
+            if(g_DebugEnabled)
+            {
+                // LOG_INFO("server.loading", "[Ollama Chat] VERIFIED eligible bot {} in channel '{}' - Distance: {:.2f}, Zone match: {}", candidate->GetName(), channel->GetName(), candidate->GetDistance(player), (candidate->GetZoneId() == player->GetZoneId()));
+            }
+        }
+        
+        if(g_DebugEnabled)
+        {
+            LOG_INFO("server.loading", "[Ollama Chat] Found {} bots in channel instance '{}'", 
+                    eligibleBots.size(), channel->GetName());
+        }
+    }
+    else
+    {
+        // For other chat types (say, yell, guild, party, etc.), use all players and filter by eligibility
+        auto const& allPlayers = ObjectAccessor::GetPlayers();
+        for (auto const& itr : allPlayers)
+        {
+            Player* candidate = itr.second;
+            if (candidate->IsInWorld() && candidate != player)
+            {
+                PlayerbotAI* candidateAI = sPlayerbotsMgr->GetPlayerbotAI(candidate);
+                if (candidateAI && candidateAI->IsBotAI())
+                {
+                    eligibleBots.push_back(candidate);
+                }
+            }
         }
     }
     
@@ -592,8 +786,19 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
         {
             continue;
         }
-        if (IsBotEligibleForChatChannelLocal(bot, player, sourceLocal, channel))
+        // For channel messages, bots in eligibleBots have already passed STRICT channel checks
+        // Only run additional eligibility checks for non-channel sources
+        if (channel != nullptr)
+        {
+            // Channel bots have already been verified to be in EXACT same channel instance
             candidateBots.push_back(bot);
+        }
+        else
+        {
+            // For non-channel sources, run the full eligibility check
+            if (IsBotEligibleForChatChannelLocal(bot, player, sourceLocal, channel, receiver))
+                candidateBots.push_back(bot);
+        }
     }
     
     uint32_t chance = senderIsBot ? g_BotReplyChance : g_PlayerReplyChance;
@@ -607,8 +812,6 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
                 continue;
             if (!candidate->IsInWorld())
                 continue;
-            if (player->GetDistance(candidate) > g_GeneralDistance)
-                continue;
             if (!sPlayerbotsMgr->GetPlayerbotAI(candidate))
             {
                 realPlayerNearby = true;
@@ -620,46 +823,67 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
     }
     
         std::vector<Player*> finalCandidates;
-    std::vector<std::pair<size_t, Player*>> mentionedBots;
-
-    for (Player* bot : candidateBots)
+    
+    // For whispers, handle directly - there should only be one receiver bot
+    if (sourceLocal == SRC_WHISPER_LOCAL)
     {
-        if (!bot)
+        if (!candidateBots.empty())
         {
-            continue;
-        }
-        if (g_DisableRepliesInCombat && bot->IsInCombat())
-        {
-            continue;
-        }
-        size_t pos = trimmedMsg.find(bot->GetName());
-        if (pos != std::string::npos)
-        {
-            mentionedBots.emplace_back(pos, bot);
-        }
-    }
-
-    if (!mentionedBots.empty())
-    {
-        std::sort(mentionedBots.begin(), mentionedBots.end(),
-                  [](auto &a, auto &b) { return a.first < b.first; });
-        Player* chosen = mentionedBots.front().second;
-        if (!(g_DisableRepliesInCombat && chosen->IsInCombat()))
-        {
-            finalCandidates.push_back(chosen);
+            Player* whisperBot = candidateBots[0]; // Should only be one bot for whispers
+            if (!(g_DisableRepliesInCombat && whisperBot->IsInCombat()))
+            {
+                finalCandidates.push_back(whisperBot);
+                if(g_DebugEnabled)
+                {
+                    LOG_INFO("server.loading", "[Ollama Chat] Whisper: Bot {} selected to respond", whisperBot->GetName());
+                }
+            }
         }
     }
     else
     {
+        // Handle non-whisper chats with normal multi-bot logic
+        std::vector<std::pair<size_t, Player*>> mentionedBots;
+
         for (Player* bot : candidateBots)
         {
+            if (!bot)
+            {
+                continue;
+            }
             if (g_DisableRepliesInCombat && bot->IsInCombat())
             {
                 continue;
             }
-            if (urand(0, 99) < chance)
+            size_t pos = trimmedMsg.find(bot->GetName());
+            if (pos != std::string::npos)
             {
-                finalCandidates.push_back(bot);
+                mentionedBots.emplace_back(pos, bot);
+            }
+        }
+
+        if (!mentionedBots.empty())
+        {
+            std::sort(mentionedBots.begin(), mentionedBots.end(),
+                      [](auto &a, auto &b) { return a.first < b.first; });
+            Player* chosen = mentionedBots.front().second;
+            if (!(g_DisableRepliesInCombat && chosen->IsInCombat()))
+            {
+                finalCandidates.push_back(chosen);
+            }
+        }
+        else
+        {
+            for (Player* bot : candidateBots)
+            {
+                if (g_DisableRepliesInCombat && bot->IsInCombat())
+                {
+                    continue;
+                }
+                if (urand(0, 99) < chance)
+                {
+                    finalCandidates.push_back(bot);
+                }
             }
         }
     }
@@ -669,7 +893,10 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
     {
         if(g_DebugEnabled)
         {
-            LOG_INFO("server.loading", "[Ollama Chat] No eligible bots found to respond to message '{}'.", msg);
+            LOG_INFO("server.loading", "[Ollama Chat] No eligible bots found to respond to message '{}'. "
+                    "Source: {}, Eligible bots: {}, Candidate bots: {}, Combat disabled: {}",
+                    msg, ChatChannelSourceLocalStr[sourceLocal], eligibleBots.size(), 
+                    candidateBots.size(), g_DisableRepliesInCombat);
         }
         return;
     }
@@ -698,7 +925,7 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
         std::string prompt = GenerateBotPrompt(bot, msg, player);
         uint64_t botGuid = bot->GetGUID().GetRawValue();
         
-        std::thread([botGuid, senderGuid, prompt, sourceLocal, channelId = (channel ? channel->GetChannelId() : 0), msg]() {
+        std::thread([botGuid, senderGuid, prompt, sourceLocal, channelId = (channel ? channel->GetChannelId() : 0), channelName = (channel ? channel->GetName() : ""), msg]() {
             try {
                 // Use the QueryManager to submit the query.
                 auto responseFuture = SubmitQuery(prompt);
@@ -745,23 +972,108 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
                     return;
                 }
                 // Route the response.
-                if (channelId != 0)
+                if (channelId != 0 && !channelName.empty())
                 {
-                    ChatChannelId chanId = static_cast<ChatChannelId>(channelId);
-                    botAI->SayToChannel(response, chanId);
+                    // For channels, get the channel instance for the bot's team
+                    ChannelMgr* cMgr = ChannelMgr::forTeam(botPtr->GetTeamId());
+                    if (cMgr)
+                    {
+                        Channel* targetChannel = cMgr->GetChannel(channelName, botPtr);
+                        if (targetChannel)
+                        {
+                            if(g_DebugEnabled)
+                            {
+                                LOG_INFO("server.loading", "[Ollama Chat] Bot {} found channel '{}' (ID: {}), checking membership...", 
+                                        botPtr->GetName(), channelName, targetChannel->GetChannelId());
+                            }
+                            
+                            if (botPtr->IsInChannel(targetChannel))
+                            {
+                                if(g_DebugEnabled)
+                                {
+                                    LOG_INFO("server.loading", "[Ollama Chat] Bot {} is confirmed in channel '{}', sending message...", 
+                                            botPtr->GetName(), channelName);
+                                }
+                                targetChannel->Say(botPtr->GetGUID(), response, LANG_UNIVERSAL);
+                                if(g_DebugEnabled)
+                                {
+                                    LOG_INFO("server.loading", "[Ollama Chat] Bot {} responded in channel {}: {}", 
+                                            botPtr->GetName(), channelName, response);
+                                }
+                            }
+                            else
+                            {
+                                if(g_DebugEnabled)
+                                {
+                                    LOG_ERROR("server.loading", "[Ollama Chat] Bot {} NOT in channel '{}' according to IsInChannel check", 
+                                                botPtr->GetName(), channelName);
+                                }
+                                // Fallback to normal bot speech
+                                botAI->Say(response);
+                            }
+                        }
+                        else
+                        {
+                            if(g_DebugEnabled)
+                            {
+                                LOG_ERROR("server.loading", "[Ollama Chat] Bot {} cannot find channel '{}' (ID: {}) for team {}", 
+                                         botPtr->GetName(), channelName, channelId, (int)botPtr->GetTeamId());
+                            }
+                            // Fallback to normal bot speech
+                            botAI->Say(response);
+                        }
+                    }
                 }
                 else
                 {
                     switch (sourceLocal)
                     {
-                        case SRC_GUILD_LOCAL: botAI->SayToGuild(response); break;
-                        case SRC_PARTY_LOCAL: botAI->SayToParty(response); break;
-                        case SRC_RAID_LOCAL:  botAI->SayToRaid(response); break;
-                        case SRC_SAY_LOCAL:   botAI->Say(response); break;
-                        case SRC_YELL_LOCAL:  botAI->Yell(response); break;
-                        default:              botAI->Say(response); break;
+                        case SRC_GUILD_LOCAL: 
+                            botAI->SayToGuild(response); 
+                            break;
+                        case SRC_OFFICER_LOCAL: 
+                            botAI->SayToGuild(response); 
+                            break;
+                        case SRC_PARTY_LOCAL: 
+                            botAI->SayToParty(response); 
+                            break;
+                        case SRC_RAID_LOCAL:  
+                            botAI->SayToRaid(response); 
+                            break;
+                        case SRC_SAY_LOCAL:   
+                            botAI->Say(response); 
+                            break;
+                        case SRC_YELL_LOCAL:  
+                            botAI->Yell(response); 
+                            break;
+                        case SRC_WHISPER_LOCAL:
+                            // For whispers, find the original sender and whisper back
+                            {
+                                Player* originalSender = ObjectAccessor::FindPlayer(ObjectGuid(senderGuid));
+                                if (originalSender)
+                                {
+                                    if(g_DebugEnabled)
+                                    {
+                                        LOG_INFO("server.loading", "[Ollama Chat] Bot {} whispering response '{}' to {}", 
+                                                botPtr->GetName(), response, originalSender->GetName());
+                                    }
+                                    botAI->Whisper(response, originalSender->GetName());
+                                }
+                                else if(g_DebugEnabled)
+                                {
+                                    LOG_ERROR("server.loading", "[Ollama Chat] Cannot whisper response - original sender not found for GUID {}", senderGuid);
+                                }
+                            }
+                            break;
+                        default:              
+                            botAI->Say(response); 
+                            break;
                     }
                 }
+                
+                // Update sentiment based on the player's message
+                UpdateBotPlayerSentiment(botPtr, senderPtr, msg);
+                
                 AppendBotConversation(botGuid, senderGuid, msg, response);
                 float respDistance = senderPtr->GetDistance(botPtr);
                 if(g_DebugEnabled)
@@ -781,40 +1093,112 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
     }
 }
 
-static bool IsBotEligibleForChatChannelLocal(Player* bot, Player* player, ChatChannelSourceLocal source, Channel* channel)
+static bool IsBotEligibleForChatChannelLocal(Player* bot, Player* player, ChatChannelSourceLocal source, Channel* channel, Player* receiver)
 {
     if (!bot || !player || bot == player)
         return false;
-    if (bot->GetTeamId() != player->GetTeamId())
-        return false;
     if (!sPlayerbotsMgr->GetPlayerbotAI(bot))
         return false;
-    if (channel && !bot->IsInChannel(channel))
+        
+    // For whispers, only the specific receiver should respond
+    if (source == SRC_WHISPER_LOCAL)
+    {
+        // Don't allow bot-to-bot whisper responses
+        PlayerbotAI* senderAI = sPlayerbotsMgr->GetPlayerbotAI(player);
+        if (senderAI && senderAI->IsBotAI())
+        {
+            return false;
+        }
+        
+        return (receiver && bot == receiver);
+    }
+    
+    // Check team compatibility for non-whisper chats (except channels which can be cross-faction)
+    if (!channel && bot->GetTeamId() != player->GetTeamId())
         return false;
+    
+    // For channels, check if bot is in the specific channel instance
+    if (channel)
+    {
+        // Verify the channel is valid before proceeding
+        if (!channel)
+        {
+            if(g_DebugEnabled)
+            {
+                LOG_ERROR("server.loading", "[Ollama Chat] IsBotEligibleForChatChannelLocal: Channel is null");
+            }
+            return false;
+        }
+        
+        // Early security check before expensive channel lookup
+        if (!AccountMgr::IsPlayerAccount(bot->GetSession()->GetSecurity()))
+            return false;
+            
+        // ONLY use exact channel instance check - NO Player::IsInChannel() anymore
+        ChannelMgr* candidateCMgr = ChannelMgr::forTeam(bot->GetTeamId());
+        if (!candidateCMgr)
+            return false;
+            
+        Channel* candidateChannel = candidateCMgr->GetChannel(channel->GetName(), bot);
+        // Verify both channels are valid and are the exact same instance
+        if (!candidateChannel || candidateChannel != channel)
+        {
+            if(g_DebugEnabled)
+            {
+                LOG_INFO("server.loading", "[Ollama Chat] IsBotEligibleForChatChannelLocal: Bot {} not in same channel instance '{}' - Bot team: {}, Channel ptr: {} vs {}", 
+                        bot->GetName(), channel->GetName(), (int)bot->GetTeamId(),
+                        (void*)candidateChannel, (void*)channel);
+            }
+            return false;
+        }
+        
+        // Additional team check for cross-faction channels - only allow same faction unless it's a global channel
+        if (bot->GetTeamId() != player->GetTeamId())
+        {
+            // Allow cross-faction only for specific global channels
+            bool isGlobalChannel = (channel->GetName().find("World") != std::string::npos || 
+                                   channel->GetName().find("LookingForGroup") != std::string::npos);
+            if (!isGlobalChannel)
+            {
+                if(g_DebugEnabled)
+                {
+                    LOG_INFO("server.loading", "[Ollama Chat] IsBotEligibleForChatChannelLocal: Bot {} different faction from player - Bot: {}, Player: {}, Channel: '{}'", bot->GetName(), (int)bot->GetTeamId(), (int)player->GetTeamId(), channel->GetName());
+                }
+                return false;
+            }
+        }
+    }
     
     bool isInParty = (player->GetGroup() && bot->GetGroup() && (player->GetGroup() == bot->GetGroup()));
     float threshold = 0.0f;
+    
     switch (source)
     {
-        case SRC_SAY_LOCAL:    threshold = g_SayDistance;     break;
-        case SRC_YELL_LOCAL:   threshold = g_YellDistance;    break;
-        case SRC_GENERAL_LOCAL:threshold = g_GeneralDistance; break;
-        default:               threshold = 0.0f;              break;
-    }
-    switch (source)
-    {
+        case SRC_SAY_LOCAL:    
+            threshold = g_SayDistance;
+            return (threshold > 0.0f && player->GetDistance(bot) <= threshold);
+            
+        case SRC_YELL_LOCAL:   
+            threshold = g_YellDistance;
+            return (threshold > 0.0f && player->GetDistance(bot) <= threshold);
+            
         case SRC_GUILD_LOCAL:
+        case SRC_OFFICER_LOCAL:
             return (player->GetGuild() && bot->GetGuildId() == player->GetGuildId());
+            
         case SRC_PARTY_LOCAL:
-            return isInParty;
         case SRC_RAID_LOCAL:
             return isInParty;
-        case SRC_SAY_LOCAL:
-            return (threshold > 0.0f && player->GetDistance(bot) > threshold) ? false : true;
-        case SRC_YELL_LOCAL:
-            return (threshold > 0.0f && player->GetDistance(bot) > threshold) ? false : true;
+            
+        case SRC_WHISPER_LOCAL:
+            // For whispers, the bot should only respond if it's the specific receiver
+            return (receiver && bot == receiver);
+            
         case SRC_GENERAL_LOCAL:
-            return (threshold > 0.0f && player->GetDistance(bot) > threshold) ? false : true;
+            // For channels like General, Trade, etc., no distance check - only channel membership matters
+            // Channel membership was already checked above
+            return true;
+            
         default:
             return false;
     }
@@ -875,6 +1259,7 @@ std::string GenerateBotPrompt(Player* bot, std::string playerMessage, Player* pl
     float playerDistance            = player->IsInWorld() && bot->IsInWorld() ? player->GetDistance(bot) : -1.0f;
 
     std::string chatHistory         = GetBotHistoryPrompt(botGuid, playerGuid, playerMessage);
+    std::string sentimentInfo       = GetSentimentPromptAddition(bot, player);
 
     std::string extraInfo = SafeFormat(
         g_ChatExtraInfoTemplate,
@@ -908,7 +1293,9 @@ std::string GenerateBotPrompt(Player* bot, std::string playerMessage, Player* pl
         fmt::arg("player_class", playerClass),
         fmt::arg("player_name", playerName),
         fmt::arg("player_message", playerMessage),
-        fmt::arg("extra_info", extraInfo)
+        fmt::arg("extra_info", extraInfo),
+        fmt::arg("chat_history", chatHistory),
+        fmt::arg("sentiment_info", sentimentInfo)
     );
 
     if(g_EnableChatBotSnapshotTemplate)

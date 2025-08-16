@@ -1,11 +1,11 @@
 #define CURL_STATICLIB
 #include "mod-ollama-chat_config.h"
+#include "mod-ollama-chat_sentiment.h"
 #include "Config.h"
 #include "Log.h"
 #include "mod-ollama-chat_api.h"
 #include <fmt/core.h>
 #include <sstream>
-#include <curl/curl.h>
 #include <fstream>
 
 
@@ -14,7 +14,6 @@
 // --------------------------------------------
 float      g_SayDistance       = 30.0f;
 float      g_YellDistance      = 100.0f;
-float      g_GeneralDistance   = 600.0f;
 float      g_RandomChatterRealPlayerDistance = 40.0f;
 float      g_EventChatterRealPlayerDistance = 40.0f;
 
@@ -24,7 +23,7 @@ float      g_EventChatterRealPlayerDistance = 40.0f;
 uint32_t   g_PlayerReplyChance = 90;
 uint32_t   g_BotReplyChance    = 10;
 uint32_t   g_MaxBotsToPick     = 2;
-uint32_t   g_RandomChatterBotCommentChance   = 25;
+uint32_t   g_RandomChatterBotCommentChance   = 5;
 uint32_t   g_RandomChatterMaxBotsPerPlayer   = 2;
 uint32_t   g_EventChatterBotCommentChance    = 15;
 uint32_t   g_EventChatterBotSelfCommentChance = 5;
@@ -40,6 +39,7 @@ float       g_OllamaTemperature = 0.8f;
 float       g_OllamaTopP = 0.95f;
 float       g_OllamaRepeatPenalty = 1.1f;
 uint32_t    g_OllamaNumCtx = 0;
+uint32_t    g_OllamaNumThreads = 0;
 std::string g_OllamaStop = "";
 std::string g_OllamaSystemPrompt = "";
 std::string g_OllamaSeed = "";
@@ -114,6 +114,21 @@ std::mutex g_ConversationHistoryMutex;
 time_t g_LastHistorySaveTime = 0;
 
 // --------------------------------------------
+// Bot-Player Sentiment Tracking System
+// --------------------------------------------
+bool        g_EnableSentimentTracking = true;
+float       g_SentimentDefaultValue = 0.5f;              // Default sentiment value (0.5 = neutral)
+float       g_SentimentAdjustmentStrength = 0.1f;        // How much to adjust sentiment per message
+uint32_t    g_SentimentSaveInterval = 10;                // How often to save sentiment to DB (minutes)
+std::string g_SentimentAnalysisPrompt = "Analyze the sentiment of this message: \"{message}\". Respond only with: POSITIVE, NEGATIVE, or NEUTRAL.";
+std::string g_SentimentPromptTemplate = "Your relationship sentiment with {player_name} is {sentiment_value} (0.0=hostile, 0.5=neutral, 1.0=friendly). Use this to guide your tone and response.";
+
+// In-memory sentiment storage and mutex
+std::unordered_map<uint64_t, std::unordered_map<uint64_t, float>> g_BotPlayerSentiments;
+std::mutex g_SentimentMutex;
+time_t g_LastSentimentSaveTime = 0;
+
+// --------------------------------------------
 // Blacklist: Prefixes for Commands (not chat)
 // --------------------------------------------
 std::vector<std::string> g_BlacklistCommands = {
@@ -136,6 +151,35 @@ std::vector<std::string> g_EnvCommentQuestgiver;
 std::vector<std::string> g_EnvCommentBagSlots;
 std::vector<std::string> g_EnvCommentDungeon;
 std::vector<std::string> g_EnvCommentUnfinishedQuest;
+
+// --------------------------------------------
+// Guild-Specific Random Chatter Templates
+// --------------------------------------------
+std::vector<std::string> g_GuildEnvCommentGuildMember;
+std::vector<std::string> g_GuildEnvCommentGuildRank;
+std::vector<std::string> g_GuildEnvCommentGuildBank;
+std::vector<std::string> g_GuildEnvCommentGuildMOTD;
+std::vector<std::string> g_GuildEnvCommentGuildInfo;
+std::vector<std::string> g_GuildEnvCommentGuildOnlineMembers;
+
+// --------------------------------------------
+// Guild-Specific Random Chatter Configuration
+// --------------------------------------------
+bool        g_EnableGuildRandomChatter             = true;
+uint32_t    g_GuildChatterBotCommentChance          = 25;
+uint32_t    g_GuildChatterMaxBotsPerEvent           = 2;
+
+// --------------------------------------------
+// Guild-Specific Event Chatter Templates
+// --------------------------------------------
+std::string g_GuildEventTypeLevelUp = "";
+std::string g_GuildEventTypeDungeonComplete = "";
+std::string g_GuildEventTypeEpicGear = "";
+std::string g_GuildEventTypeRareGear = "";
+std::string g_GuildEventTypeGuildJoin = "";
+std::string g_GuildEventTypeGuildLeave = "";
+std::string g_GuildEventTypeGuildPromotion = "";
+std::string g_GuildEventTypeGuildDemotion = "";
 
 // --------------------------------------------
 // Event Chatter Templates
@@ -248,7 +292,6 @@ void LoadOllamaChatConfig()
 {
     g_SayDistance                     = sConfigMgr->GetOption<float>("OllamaChat.SayDistance", 30.0f);
     g_YellDistance                    = sConfigMgr->GetOption<float>("OllamaChat.YellDistance", 100.0f);
-    g_GeneralDistance                 = sConfigMgr->GetOption<float>("OllamaChat.GeneralDistance", 600.0f);
     g_PlayerReplyChance               = sConfigMgr->GetOption<uint32_t>("OllamaChat.PlayerReplyChance", 90);
     g_BotReplyChance                  = sConfigMgr->GetOption<uint32_t>("OllamaChat.BotReplyChance", 10);
     g_MaxBotsToPick                   = sConfigMgr->GetOption<uint32_t>("OllamaChat.MaxBotsToPick", 2);
@@ -259,6 +302,7 @@ void LoadOllamaChatConfig()
     g_OllamaTopP                      = sConfigMgr->GetOption<float>("OllamaChat.TopP", 0.95f);
     g_OllamaRepeatPenalty             = sConfigMgr->GetOption<float>("OllamaChat.RepeatPenalty", 1.1f);
     g_OllamaNumCtx                    = sConfigMgr->GetOption<uint32_t>("OllamaChat.NumCtx", 0);
+    g_OllamaNumThreads                = sConfigMgr->GetOption<uint32_t>("OllamaChat.NumThreads", 0);
     g_OllamaStop                      = sConfigMgr->GetOption<std::string>("OllamaChat.Stop", "");
     g_OllamaSystemPrompt              = sConfigMgr->GetOption<std::string>("OllamaChat.SystemPrompt", "");
     g_OllamaSeed                      = sConfigMgr->GetOption<std::string>("OllamaChat.Seed", "");
@@ -306,6 +350,14 @@ void LoadOllamaChatConfig()
     g_ChatBotSnapshotTemplate         = sConfigMgr->GetOption<std::string>("OllamaChat.ChatBotSnapshotTemplate", "");
 
     g_EnableChatHistory               = sConfigMgr->GetOption<bool>("OllamaChat.EnableChatHistory", true);
+
+    // Bot-Player Sentiment Tracking
+    g_EnableSentimentTracking         = sConfigMgr->GetOption<bool>("OllamaChat.EnableSentimentTracking", true);
+    g_SentimentDefaultValue           = sConfigMgr->GetOption<float>("OllamaChat.SentimentDefaultValue", 0.5f);
+    g_SentimentAdjustmentStrength     = sConfigMgr->GetOption<float>("OllamaChat.SentimentAdjustmentStrength", 0.1f);
+    g_SentimentSaveInterval           = sConfigMgr->GetOption<uint32_t>("OllamaChat.SentimentSaveInterval", 10);
+    g_SentimentAnalysisPrompt         = sConfigMgr->GetOption<std::string>("OllamaChat.SentimentAnalysisPrompt", "Analyze the sentiment of this message: \"{message}\". Respond only with: POSITIVE, NEGATIVE, or NEUTRAL.");
+    g_SentimentPromptTemplate         = sConfigMgr->GetOption<std::string>("OllamaChat.SentimentPromptTemplate", "Your relationship sentiment with {player_name} is {sentiment_value} (0.0=hostile, 0.5=neutral, 1.0=friendly). Use this to guide your tone and response.");
 
     g_ThinkModeEnableForModule        = sConfigMgr->GetOption<bool>("OllamaChat.ThinkModeEnableForModule", false);
 
@@ -374,12 +426,35 @@ void LoadOllamaChatConfig()
     g_EnvCommentDungeon         = LoadEnvCommentVector("OllamaChat.EnvCommentDungeon", { "" });
     g_EnvCommentUnfinishedQuest = LoadEnvCommentVector("OllamaChat.EnvCommentUnfinishedQuest", { "" });
 
+    // Guild-specific random chatter templates
+    g_GuildEnvCommentGuildMember = LoadEnvCommentVector("OllamaChat.GuildEnvCommentGuildMember", { "" });
+    g_GuildEnvCommentGuildRank = LoadEnvCommentVector("OllamaChat.GuildEnvCommentGuildRank", { "" });
+    g_GuildEnvCommentGuildBank = LoadEnvCommentVector("OllamaChat.GuildEnvCommentGuildBank", { "" });
+    g_GuildEnvCommentGuildMOTD = LoadEnvCommentVector("OllamaChat.GuildEnvCommentGuildMOTD", { "" });
+    g_GuildEnvCommentGuildInfo = LoadEnvCommentVector("OllamaChat.GuildEnvCommentGuildInfo", { "" });
+    g_GuildEnvCommentGuildOnlineMembers = LoadEnvCommentVector("OllamaChat.GuildEnvCommentGuildOnlineMembers", { "" });
+
+    // Guild-specific configuration
+    g_EnableGuildRandomChatter = sConfigMgr->GetOption<bool>("OllamaChat.EnableGuildRandomChatter", true);
+    g_GuildChatterBotCommentChance = sConfigMgr->GetOption<uint32_t>("OllamaChat.GuildChatterBotCommentChance", 25);
+    g_GuildChatterMaxBotsPerEvent = sConfigMgr->GetOption<uint32_t>("OllamaChat.GuildChatterMaxBotsPerEvent", 2);
+
+    // Guild-specific event templates
+    g_GuildEventTypeLevelUp = sConfigMgr->GetOption<std::string>("OllamaChat.GuildEventTypeLevelUp", "");
+    g_GuildEventTypeDungeonComplete = sConfigMgr->GetOption<std::string>("OllamaChat.GuildEventTypeDungeonComplete", "");
+    g_GuildEventTypeEpicGear = sConfigMgr->GetOption<std::string>("OllamaChat.GuildEventTypeEpicGear", "");
+    g_GuildEventTypeRareGear = sConfigMgr->GetOption<std::string>("OllamaChat.GuildEventTypeRareGear", "");
+    g_GuildEventTypeGuildJoin = sConfigMgr->GetOption<std::string>("OllamaChat.GuildEventTypeGuildJoin", "");
+    g_GuildEventTypeGuildLeave = sConfigMgr->GetOption<std::string>("OllamaChat.GuildEventTypeGuildLeave", "");
+    g_GuildEventTypeGuildPromotion = sConfigMgr->GetOption<std::string>("OllamaChat.GuildEventTypeGuildPromotion", "");
+    g_GuildEventTypeGuildDemotion = sConfigMgr->GetOption<std::string>("OllamaChat.GuildEventTypeGuildDemotion", "");
+
     LOG_INFO("server.loading",
              "[Ollama Chat] Config loaded: Enabled = {}, SayDistance = {}, YellDistance = {}, "
-             "GeneralDistance = {}, PlayerReplyChance = {}%, BotReplyChance = {}%, MaxBotsToPick = {}, "
+             "PlayerReplyChance = {}%, BotReplyChance = {}%, MaxBotsToPick = {}, "
              "Url = {}, Model = {}, MaxConcurrentQueries = {}, EnableRandomChatter = {}, MinRandInt = {}, MaxRandInt = {}, RandomChatterRealPlayerDistance = {}, "
              "RandomChatterBotCommentChance = {}. MaxConcurrentQueries = {}. Extra blacklist commands: {}",
-             g_Enable, g_SayDistance, g_YellDistance, g_GeneralDistance,
+             g_Enable, g_SayDistance, g_YellDistance,
              g_PlayerReplyChance, g_BotReplyChance, g_MaxBotsToPick,
              g_OllamaUrl, g_OllamaModel, g_MaxConcurrentQueries,
              g_EnableRandomChatter, g_MinRandomInterval, g_MaxRandomInterval, g_RandomChatterRealPlayerDistance,
@@ -444,8 +519,8 @@ OllamaChatConfigWorldScript::OllamaChatConfigWorldScript() : WorldScript("Ollama
 
 void OllamaChatConfigWorldScript::OnStartup()
 {
-    curl_global_init(CURL_GLOBAL_ALL);
     LoadOllamaChatConfig();
     LoadBotPersonalityList();
     LoadBotConversationHistoryFromDB();
+    InitializeSentimentTracking();
 }

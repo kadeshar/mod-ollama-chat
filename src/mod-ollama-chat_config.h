@@ -15,7 +15,6 @@
 // --------------------------------------------
 extern float      g_SayDistance;
 extern float      g_YellDistance;
-extern float      g_GeneralDistance;
 extern float      g_RandomChatterRealPlayerDistance;
 extern float      g_EventChatterRealPlayerDistance;
 
@@ -41,6 +40,7 @@ extern float       g_OllamaTemperature;
 extern float       g_OllamaTopP;
 extern float       g_OllamaRepeatPenalty;
 extern uint32_t    g_OllamaNumCtx;
+extern uint32_t    g_OllamaNumThreads;
 extern std::string g_OllamaStop;
 extern std::string g_OllamaSystemPrompt;
 extern std::string g_OllamaSeed;
@@ -134,6 +134,50 @@ extern std::vector<std::string> g_EnvCommentQuestgiver;
 extern std::vector<std::string> g_EnvCommentBagSlots;
 extern std::vector<std::string> g_EnvCommentDungeon;
 extern std::vector<std::string> g_EnvCommentUnfinishedQuest;
+
+// --------------------------------------------
+// Guild-Specific Random Chatter Templates
+// --------------------------------------------
+extern std::vector<std::string> g_GuildEnvCommentGuildMember;
+extern std::vector<std::string> g_GuildEnvCommentGuildRank;
+extern std::vector<std::string> g_GuildEnvCommentGuildBank;
+extern std::vector<std::string> g_GuildEnvCommentGuildMOTD;
+extern std::vector<std::string> g_GuildEnvCommentGuildInfo;
+extern std::vector<std::string> g_GuildEnvCommentGuildOnlineMembers;
+
+// --------------------------------------------
+// Guild-Specific Random Chatter Configuration
+// --------------------------------------------
+extern bool        g_EnableGuildRandomChatter;
+extern uint32_t    g_GuildChatterBotCommentChance;
+extern uint32_t    g_GuildChatterMaxBotsPerEvent;
+
+// --------------------------------------------
+// Guild-Specific Event Chatter Templates
+// --------------------------------------------
+extern std::string g_GuildEventTypeLevelUp;
+extern std::string g_GuildEventTypeDungeonComplete;
+extern std::string g_GuildEventTypeEpicGear;
+extern std::string g_GuildEventTypeRareGear;
+extern std::string g_GuildEventTypeGuildJoin;
+extern std::string g_GuildEventTypeGuildLeave;
+extern std::string g_GuildEventTypeGuildPromotion;
+extern std::string g_GuildEventTypeGuildDemotion;
+
+// --------------------------------------------
+// Bot-Player Sentiment Tracking System
+// --------------------------------------------
+extern bool        g_EnableSentimentTracking;
+extern float       g_SentimentDefaultValue;              // Default sentiment value (0.5 = neutral)
+extern float       g_SentimentAdjustmentStrength;        // How much to adjust sentiment per message (0.1)
+extern uint32_t    g_SentimentSaveInterval;              // How often to save sentiment to DB (minutes)
+extern std::string g_SentimentAnalysisPrompt;            // Prompt template for sentiment analysis
+extern std::string g_SentimentPromptTemplate;            // Template for including sentiment in bot prompts
+
+// In-memory sentiment storage and mutex
+extern std::unordered_map<uint64_t, std::unordered_map<uint64_t, float>> g_BotPlayerSentiments;
+extern std::mutex g_SentimentMutex;
+extern time_t g_LastSentimentSaveTime;
 
 // --------------------------------------------
 // Event Chatter: Event Type Strings
