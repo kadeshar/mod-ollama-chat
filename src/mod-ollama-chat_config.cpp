@@ -208,6 +208,36 @@ std::string g_EventTypeLeveledUp;          // "leveled up"
 std::string g_EventTypeAchievement;        // "earned achievement"
 std::string g_EventTypeUsedObject;         // "used object"
 
+// Chance variables for normal events
+int g_EventTypeDefeated_Chance = 0;
+int g_EventTypeDefeatedPlayer_Chance = 0;
+int g_EventTypePetDefeated_Chance = 0;
+int g_EventTypeGotItem_Chance = 0;
+int g_EventTypeDied_Chance = 0;
+int g_EventTypeCompletedQuest_Chance = 0;
+int g_EventTypeLearnedSpell_Chance = 0;
+int g_EventTypeRequestedDuel_Chance = 0;
+int g_EventTypeStartedDueling_Chance = 0;
+int g_EventTypeWonDuel_Chance = 0;
+int g_EventTypeLeveledUp_Chance = 0;
+int g_EventTypeAchievement_Chance = 0;
+int g_EventTypeUsedObject_Chance = 0;
+
+// Chance variables for guild events
+int g_GuildEventTypeEpicGear_Chance = 0;
+int g_GuildEventTypeRareGear_Chance = 0;
+int g_GuildEventTypeGuildJoin_Chance = 0;
+int g_GuildEventTypeGuildLogin_Chance = 0;
+int g_GuildEventTypeGuildLeave_Chance = 0;
+int g_GuildEventTypeGuildPromotion_Chance = 0;
+int g_GuildEventTypeGuildDemotion_Chance = 0;
+int g_GuildEventTypeGuildAchievement_Chance = 0;
+int g_GuildEventTypeLevelUp_Chance = 0;
+int g_GuildEventTypeDungeonComplete_Chance = 0;
+
+// Event Cooldown
+uint32_t g_EventCooldownTime = 10;
+
 
 static std::vector<std::string> SplitString(const std::string& str, char delim)
 {
@@ -413,13 +443,13 @@ void LoadOllamaChatConfig()
         std::string val = sConfigMgr->GetOption<std::string>(key, "");
         std::vector<std::string> result;
         std::istringstream iss(val);
-        std::string line;
-        while (std::getline(iss, line)) {
-            // Trim whitespace (both ends)
-            size_t start = line.find_first_not_of(" \t\r\n");
-            size_t end = line.find_last_not_of(" \t\r\n");
+        std::string token;
+        while (std::getline(iss, token, '|')) { // Split by '|'
+            // Trim whitespace from token
+            size_t start = token.find_first_not_of(" \t\r\n");
+            size_t end = token.find_last_not_of(" \t\r\n");
             if (start != std::string::npos && end != std::string::npos)
-                result.push_back(line.substr(start, end - start + 1));
+                result.push_back(token.substr(start, end - start + 1));
         }
         if (result.empty() && !defaults.empty())
             return defaults;
@@ -468,6 +498,37 @@ void LoadOllamaChatConfig()
     g_GuildEventTypeGuildLeave = sConfigMgr->GetOption<std::string>("OllamaChat.GuildEventTypeGuildLeave", "");
     g_GuildEventTypeGuildPromotion = sConfigMgr->GetOption<std::string>("OllamaChat.GuildEventTypeGuildPromotion", "");
     g_GuildEventTypeGuildDemotion = sConfigMgr->GetOption<std::string>("OllamaChat.GuildEventTypeGuildDemotion", "");
+
+    // Load chance variables for normal events
+    g_EventTypeDefeated_Chance = sConfigMgr->GetOption<int>("OllamaChat.EventTypeDefeated_Chance", 0);
+    g_EventTypeDefeatedPlayer_Chance = sConfigMgr->GetOption<int>("OllamaChat.EventTypeDefeatedPlayer_Chance", 0);
+    g_EventTypePetDefeated_Chance = sConfigMgr->GetOption<int>("OllamaChat.EventTypePetDefeated_Chance", 0);
+    g_EventTypeGotItem_Chance = sConfigMgr->GetOption<int>("OllamaChat.EventTypeGotItem_Chance", 0);
+    g_EventTypeDied_Chance = sConfigMgr->GetOption<int>("OllamaChat.EventTypeDied_Chance", 0);
+    g_EventTypeCompletedQuest_Chance = sConfigMgr->GetOption<int>("OllamaChat.EventTypeCompletedQuest_Chance", 0);
+    g_EventTypeLearnedSpell_Chance = sConfigMgr->GetOption<int>("OllamaChat.EventTypeLearnedSpell_Chance", 0);
+    g_EventTypeRequestedDuel_Chance = sConfigMgr->GetOption<int>("OllamaChat.EventTypeRequestedDuel_Chance", 0);
+    g_EventTypeStartedDueling_Chance = sConfigMgr->GetOption<int>("OllamaChat.EventTypeStartedDueling_Chance", 0);
+    g_EventTypeWonDuel_Chance = sConfigMgr->GetOption<int>("OllamaChat.EventTypeWonDuel_Chance", 0);
+    g_EventTypeLeveledUp_Chance = sConfigMgr->GetOption<int>("OllamaChat.EventTypeLeveledUp_Chance", 0);
+    g_EventTypeAchievement_Chance = sConfigMgr->GetOption<int>("OllamaChat.EventTypeAchievement_Chance", 0);
+    g_EventTypeUsedObject_Chance = sConfigMgr->GetOption<int>("OllamaChat.EventTypeUsedObject_Chance", 0);
+
+    // Load chance variables for guild events
+    g_GuildEventTypeEpicGear_Chance = sConfigMgr->GetOption<int>("OllamaChat.GuildEventTypeEpicGear_Chance", 0);
+    g_GuildEventTypeRareGear_Chance = sConfigMgr->GetOption<int>("OllamaChat.GuildEventTypeRareGear_Chance", 0);
+    g_GuildEventTypeGuildJoin_Chance = sConfigMgr->GetOption<int>("OllamaChat.GuildEventTypeGuildJoin_Chance", 0);
+    g_GuildEventTypeGuildLogin_Chance = sConfigMgr->GetOption<int>("OllamaChat.GuildEventTypeGuildLogin_Chance", 0);
+    g_GuildEventTypeGuildLeave_Chance = sConfigMgr->GetOption<int>("OllamaChat.GuildEventTypeGuildLeave_Chance", 0);
+    g_GuildEventTypeGuildPromotion_Chance = sConfigMgr->GetOption<int>("OllamaChat.GuildEventTypeGuildPromotion_Chance", 0);
+    g_GuildEventTypeGuildDemotion_Chance = sConfigMgr->GetOption<int>("OllamaChat.GuildEventTypeGuildDemotion_Chance", 0);
+    g_GuildEventTypeGuildAchievement_Chance = sConfigMgr->GetOption<int>("OllamaChat.GuildEventTypeGuildAchievement_Chance", 0);
+    g_GuildEventTypeLevelUp_Chance = sConfigMgr->GetOption<int>("OllamaChat.GuildEventTypeLevelUp_Chance", 0);
+    g_GuildEventTypeDungeonComplete_Chance = sConfigMgr->GetOption<int>("OllamaChat.GuildEventTypeDungeonComplete_Chance", 0);
+
+
+    // Cooldown time for events
+    g_EventCooldownTime = sConfigMgr->GetOption<uint32_t>("OllamaChat.EventCooldownTime", 10);
 
     LOG_INFO("server.loading",
              "[Ollama Chat] Config loaded: Enabled = {}, SayDistance = {}, YellDistance = {}, "

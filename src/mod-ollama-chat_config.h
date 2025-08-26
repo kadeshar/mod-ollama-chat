@@ -174,6 +174,33 @@ extern std::string g_GuildEventTypeGuildDemotion;
 extern std::string g_GuildEventTypeGuildLogin;
 extern std::string g_GuildEventTypeGuildAchievement;
 
+// Chance variables for normal events
+extern int g_EventTypeDefeated_Chance;
+extern int g_EventTypeDefeatedPlayer_Chance;
+extern int g_EventTypePetDefeated_Chance;
+extern int g_EventTypeGotItem_Chance;
+extern int g_EventTypeDied_Chance;
+extern int g_EventTypeCompletedQuest_Chance;
+extern int g_EventTypeLearnedSpell_Chance;
+extern int g_EventTypeRequestedDuel_Chance;
+extern int g_EventTypeStartedDueling_Chance;
+extern int g_EventTypeWonDuel_Chance;
+extern int g_EventTypeLeveledUp_Chance;
+extern int g_EventTypeAchievement_Chance;
+extern int g_EventTypeUsedObject_Chance;
+
+// Chance variables for guild events
+extern int g_GuildEventTypeEpicGear_Chance;
+extern int g_GuildEventTypeRareGear_Chance;
+extern int g_GuildEventTypeGuildJoin_Chance;
+extern int g_GuildEventTypeGuildLogin_Chance;
+extern int g_GuildEventTypeGuildLeave_Chance;
+extern int g_GuildEventTypeGuildPromotion_Chance;
+extern int g_GuildEventTypeGuildDemotion_Chance;
+extern int g_GuildEventTypeGuildAchievement_Chance;
+extern int g_GuildEventTypeLevelUp_Chance;
+extern int g_GuildEventTypeDungeonComplete_Chance;
+
 // --------------------------------------------
 // Bot-Player Sentiment Tracking System
 // --------------------------------------------
@@ -207,6 +234,9 @@ extern std::string g_EventTypeWonDuel;            // "won duel against"
 extern std::string g_EventTypeLeveledUp;          // "leveled up"
 extern std::string g_EventTypeAchievement;        // "earned achievement"
 extern std::string g_EventTypeUsedObject;         // "used object"
+
+// Event Cooldown
+extern uint32_t g_EventCooldownTime;
 
 // --------------------------------------------
 // Loader Functions
