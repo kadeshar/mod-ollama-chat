@@ -29,6 +29,7 @@
 #include "mod-ollama-chat_config.h"
 #include "mod-ollama-chat-utilities.h"
 #include "mod-ollama-chat_sentiment.h"
+#include "mod-ollama-chat_rag.h"
 #include <iomanip>
 #include "SpellMgr.h"
 #include "SpellInfo.h"
@@ -1261,6 +1262,23 @@ std::string GenerateBotPrompt(Player* bot, std::string playerMessage, Player* pl
     std::string chatHistory         = GetBotHistoryPrompt(botGuid, playerGuid, playerMessage);
     std::string sentimentInfo       = GetSentimentPromptAddition(bot, player);
 
+    // Retrieve RAG information if enabled
+    std::string ragInfo;
+    if (g_EnableRAG && g_RAGSystem) {
+        auto ragResults = g_RAGSystem->RetrieveRelevantInfo(playerMessage, g_RAGMaxRetrievedItems, g_RAGSimilarityThreshold);
+        std::string ragContent = g_RAGSystem->GetFormattedRAGInfo(ragResults);
+        if (!ragContent.empty()) {
+            ragInfo = SafeFormat(g_RAGPromptTemplate, fmt::arg("rag_info", ragContent));
+        }
+        if (g_DebugEnabled) {
+            LOG_INFO("server.loading", "[Ollama Chat] RAG Debug - Enabled: {}, System: {}, Message: '{}', Results: {}, Content length: {}",
+                g_EnableRAG, (void*)g_RAGSystem, playerMessage, ragResults.size(), ragContent.length());
+        }
+    } else if (g_DebugEnabled) {
+        LOG_INFO("server.loading", "[Ollama Chat] RAG Debug - Not enabled or no system - Enabled: {}, System: {}",
+            g_EnableRAG, (void*)g_RAGSystem);
+    }
+
     std::string extraInfo = SafeFormat(
         g_ChatExtraInfoTemplate,
         fmt::arg("bot_race", botRace),
@@ -1298,9 +1316,19 @@ std::string GenerateBotPrompt(Player* bot, std::string playerMessage, Player* pl
         fmt::arg("sentiment_info", sentimentInfo)
     );
 
+    // Add RAG information to the prompt if available
+    if (!ragInfo.empty()) {
+        prompt += ragInfo + "\n";
+    }
+
     if(g_EnableChatBotSnapshotTemplate)
     {
         prompt += GenerateBotGameStateSnapshot(bot);
+    }
+
+    // Debug logging for full prompt including RAG information
+    if (g_DebugEnabled && g_DebugShowFullPrompt) {
+        LOG_INFO("server.loading", "[Ollama Chat] Full prompt sent to bot {} for player {}: {}", botName, playerName, prompt);
     }
 
     return prompt;
