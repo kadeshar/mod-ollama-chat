@@ -11,6 +11,16 @@
 >
 > This module is also in development and can bog down your server due to the nature of running local LLM. Please proceed with this in mind.
 
+> [!IMPORTANT]
+> To fully disable Playerbots normal chatter and random chatter that might interfere with this module, set the following settings in your `playerbots.conf`:
+> - `AiPlayerbot.EnableBroadcasts = 0` (disables loot/quest/kill broadcasts)
+> - `AiPlayerbot.RandomBotTalk = 0` (disables random talking in say/yell/general channels)
+> - `AiPlayerbot.RandomBotEmote = 0` (disables random emoting)
+> - `AiPlayerbot.RandomBotSuggestDungeons = 0` (disables dungeon suggestions)
+> - `AiPlayerbot.EnableGreet = 0` (disables greeting when invited)
+> - `AiPlayerbot.GuildFeedback = 0` (disables guild event chatting)
+> - `AiPlayerbot.RandomBotSayWithoutMaster = 0` (disables bots talking without a master)
+
 ## Overview
 
 ***mod-ollama-chat*** is an AzerothCore module that enhances the Player Bots module by integrating external language model (LLM) support via the Ollama API. This module enables player bots to generate dynamic, in-character chat responses using advanced natural language processing locally on your computer (or remotely hosted). Bots are enriched with personality traits, random chatter triggers, and context-aware replies that mimic the language and lore of World of Warcraft.
@@ -46,6 +56,9 @@
 - **Event-Based Chatter:**  
   Player bots now comment on key in-game events such as quest completion, rare loot, deaths, PvP kills, leveling up, duels, learning spells, and achievements. Remarks are context-aware, immersive, and personality-driven, making the world feel much more alive.
 
+- **Party-Only Bot Responses:**  
+  When enabled, bots will only respond to real player messages and events when they are in the same non-raid party. This helps reduce chat spam while maintaining full bot-to-bot communication within parties for immersive group interactions.
+
 - **Think Mode Support:**  
   Bots can leverage LLM models that have reasoning/think modes. Enable internal reasoning for models that support it by setting `OllamaChat.ThinkModeEnableForModule = 1` in **mod-ollama-chat.conf**. When enabled, the API request includes the `think` flag and the bot omits all `thinking` responses from its final reply.
 
@@ -60,18 +73,46 @@
 1. **Prerequisites:**
    - Ensure you have liyunfan1223's AzerothCore (https://github.com/liyunfan1223/azerothcore-wotlk) installation with the Player Bots (https://github.com/liyunfan1223/mod-playerbots) module enabled.
    - The module depends on:
-     - fmtlib (https://github.com/fmtlib/fmt) - For string formatting
-     - nlohmann/json (https://github.com/nlohmann/json) - For JSON processing
+     - **fmtlib** (https://github.com/fmtlib/fmt) - For string formatting
+     - **nlohmann/json** (https://github.com/nlohmann/json) - For JSON processing (**bundled with module** - no installation needed)
      - cpp-httplib (https://github.com/yhirose/cpp-httplib) - Header-only HTTP library (included, no installation needed)
      - Ollama LLM support – set up a local instance of the Ollama API server with the model of your choice. More details at https://ollama.com
 
-2. **Clone the Module:**
+2. **Install Dependencies:**
+
+   ### Windows (vcpkg):
+   ```bash
+   vcpkg install fmt
+   ```
+
+   ### Ubuntu/Debian:
+   ```bash
+   sudo apt update
+   sudo apt install libfmt-dev
+   ```
+
+   ### CentOS/RHEL/Fedora:
+   ```bash
+   sudo yum install fmt-devel  # or dnf install fmt-devel
+   ```
+
+   ### macOS (Homebrew):
+   ```bash
+   brew install fmt
+   ```
+
+   ### Arch Linux:
+   ```bash
+   sudo pacman -S fmt
+   ```
+
+3. **Clone the Module:**
    ```bash
    cd /path/to/azerothcore/modules
    git clone https://github.com/DustinHendrickson/mod-ollama-chat.git
    ```
 
-3. **Recompile AzerothCore:**
+4. **Recompile AzerothCore:**
    ```bash
    cd /path/to/azerothcore
    mkdir build && cd build
@@ -79,25 +120,139 @@
    make -j$(nproc)
    ```
 
-4. **Configuration:**
+5. **Configuration:**
    Copy the default configuration file to your server configuration directory and change to match your setup (if not already done):
    ```bash
    cp /path/to/azerothcore/modules/mod-ollama-chat/mod-ollama-chat.conf.dist /path/to/azerothcore/etc/config/mod-ollama-chat.conf
    ```
 
-5. **Restart the Server:**
+6. **Restart the Server:**
    ```bash
    ./worldserver
    ```
+
+## Setting up Ollama Server
+
+This module requires a running Ollama server to function. Ollama allows you to run large language models locally on your machine.
+
+### Installing Ollama
+
+Download and install Ollama from [ollama.com](https://ollama.com). It supports Windows, macOS, and Linux.
+
+- **Windows/macOS:** Download the installer from the website and run it.
+- **Linux:** Follow the installation instructions for your distribution (e.g., `curl -fsSL https://ollama.com/install.sh | sh`).
+
+### Starting the Ollama Server
+
+Once installed, start the Ollama server:
+
+```bash
+ollama serve
+```
+
+This will start the server on `http://localhost:11434` by default.
+
+### Running Ollama Across the Network
+
+If you want to run the Ollama server on a different computer than your AzerothCore server, set the `OLLAMA_HOST` environment variable to `0.0.0.0` before starting the server:
+
+```bash
+export OLLAMA_HOST=0.0.0.0
+ollama serve
+```
+
+This binds the server to all network interfaces, allowing connections from other machines on your network. Update the `OllamaChat.ApiEndpoint` in `mod-ollama-chat.conf` to use the IP address of the machine running Ollama (e.g., `http://192.168.1.100:11434`).
+
+> [!WARNING]
+> Exposing Ollama to the network may pose security risks. Ensure your firewall allows traffic on port 11434 only from trusted networks, and consider additional security measures if exposing to the internet.
+
+### Pulling a Model
+
+Before using the module, pull a model that the bots will use for generating responses. For example, to pull the Llama 3.2 1B model:
+
+```bash
+ollama pull llama3.2:1b
+```
+
+You can find available models at [ollama.com/library](https://ollama.com/library). Choose a model that fits your hardware capabilities.
+
+### Connecting the Module
+
+The module connects to the Ollama API via the configuration in `mod-ollama-chat.conf`. The default endpoint is `http://localhost:11434`. If your Ollama server is running on a different host or port, update the `OllamaChat.ApiEndpoint` setting.
+
+### Checking if Ollama is Running
+
+To verify that the Ollama server is running and accessible, you can test the API:
+
+```bash
+curl http://localhost:11434/api/tags
+```
+
+This should return a JSON response listing available models. If you get a connection error, ensure the server is started and the endpoint is correct.
 
 ## Configuration Options
 
 > For a complete list of all available configuration options with comments and defaults, see `mod-ollama-chat.conf.dist` included in this repository.
 
+## Text Commands
+
+The module provides several in-game text commands for administrators (Game Masters) to manage and monitor the Ollama chat functionality. All commands require **SEC_ADMINISTRATOR** security level (GM level 3 or higher).
+
+### `.ollama reload`
+Reloads the module's configuration from `mod-ollama-chat.conf` without restarting the server. Also reloads personality packs and sentiment data.
+- **Security Level:** SEC_ADMINISTRATOR
+- **Usage:** `.ollama reload`
+- **Console Equivalent:** `ollama reload`
+
+### `.ollama sentiment view [bot_name] [player_name]`
+Displays sentiment tracking data between bots and players.
+- **Security Level:** SEC_ADMINISTRATOR
+- **Usage:**
+  - `.ollama sentiment view` - Shows all sentiment data
+  - `.ollama sentiment view BotName` - Shows sentiment data for a specific bot
+  - `.ollama sentiment view BotName PlayerName` - Shows sentiment between specific bot and player
+- **Console Equivalent:** `ollama sentiment view [bot] [player]`
+
+### `.ollama sentiment set <bot_name> <player_name> <value>`
+Manually sets the sentiment value between a bot and player (0.0 to 1.0).
+- **Security Level:** SEC_ADMINISTRATOR
+- **Usage:** `.ollama sentiment set BotName PlayerName 0.8`
+- **Console Equivalent:** `ollama sentiment set <bot> <player> <value>`
+
+### `.ollama sentiment reset [bot_name] [player_name]`
+Resets sentiment data to default values.
+- **Security Level:** SEC_ADMINISTRATOR
+- **Usage:**
+  - `.ollama sentiment reset` - Resets all sentiment data
+  - `.ollama sentiment reset BotName` - Resets all sentiment data for a specific bot
+  - `.ollama sentiment reset BotName PlayerName` - Resets sentiment between specific bot and player
+- **Console Equivalent:** `ollama sentiment reset [bot] [player]`
+
+### `.ollama personality get <bot_name>`
+Displays the current personality assigned to a bot.
+- **Security Level:** SEC_ADMINISTRATOR
+- **Usage:** `.ollama personality get BotName`
+- **Console Equivalent:** `ollama personality get <bot>`
+
+### `.ollama personality set <bot_name> <personality>`
+Manually assigns a personality to a bot.
+- **Security Level:** SEC_ADMINISTRATOR
+- **Usage:** `.ollama personality set BotName Gamer`
+- **Console Equivalent:** `ollama personality set <bot> <personality>`
+
+### `.ollama personality list`
+Lists all available personalities and their descriptions.
+- **Security Level:** SEC_ADMINISTRATOR
+- **Usage:** `.ollama personality list`
+- **Console Equivalent:** `ollama personality list`
+
+> [!NOTE]
+> All commands can also be executed from the server console by replacing the leading dot (.) with the command prefix used in your console (typically none or a custom prefix).
+
 ## How It Works
 
 1. **Chat Filtering and Triggering**  
-   When a player (or bot) sends a chat message, the module checks the message’s type, distance, and if it starts with any configured blacklist command prefix. Only eligible messages in range and not matching the blacklist will trigger a bot response.
+   When a player (or bot) sends a chat message, the module checks the message's type, distance, and if it starts with any configured blacklist command prefix. If party restrictions are enabled, only bots in the same non-raid party as the real player can respond. Only eligible messages in range and not matching the blacklist will trigger a bot response.
 
 2. **Bot Selection**  
    The system gathers all bots within the relevant distance, determines eligibility based on player/bot reply chance, and caps responses per message using `MaxBotsToPick` and related settings.
@@ -141,9 +296,7 @@ Visit the [Personality Packs Discussion Board](https://github.com/DustinHendrick
 
 For detailed logs of bot responses, prompt generation, and LLM interactions, enable debug mode via your server logs or module-specific settings.
 
-## Troubleshooting
 
-It's advised to turn off the normal Player Bots chat in your `playerbots.conf` by setting  `AiPlayerbot.EnableBroadcasts = 0`
 
 ## License
 

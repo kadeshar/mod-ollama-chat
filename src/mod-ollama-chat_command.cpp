@@ -1,11 +1,13 @@
 #include "mod-ollama-chat_command.h"
 #include "mod-ollama-chat_config.h"
 #include "mod-ollama-chat_sentiment.h"
+#include "mod-ollama-chat_personality.h"
 #include "Chat.h"
 #include "Config.h"
 #include "ObjectAccessor.h"
 #include "Player.h"
 #include "PlayerbotMgr.h"
+#include <fmt/core.h>
 
 using namespace Acore::ChatCommands;
 
@@ -18,15 +20,23 @@ ChatCommandTable OllamaChatConfigCommand::GetCommands() const
 {
     static ChatCommandTable ollamaSentimentCommandTable =
     {
-        { "view", HandleOllamaSentimentViewCommand, SEC_ADMINISTRATOR, Console::Yes },
-        { "set", HandleOllamaSentimentSetCommand, SEC_ADMINISTRATOR, Console::Yes },
+        { "view",  HandleOllamaSentimentViewCommand,  SEC_ADMINISTRATOR, Console::Yes },
+        { "set",   HandleOllamaSentimentSetCommand,   SEC_ADMINISTRATOR, Console::Yes },
         { "reset", HandleOllamaSentimentResetCommand, SEC_ADMINISTRATOR, Console::Yes }
+    };
+
+    static ChatCommandTable ollamaPersonalityCommandTable =
+    {
+        { "get",  HandleOllamaPersonalityGetCommand,  SEC_ADMINISTRATOR, Console::Yes },
+        { "set",  HandleOllamaPersonalitySetCommand,  SEC_ADMINISTRATOR, Console::Yes },
+        { "list", HandleOllamaPersonalityListCommand, SEC_ADMINISTRATOR, Console::Yes }
     };
 
     static ChatCommandTable ollamaReloadCommandTable =
     {
-        { "reload", HandleOllamaReloadCommand, SEC_ADMINISTRATOR, Console::Yes },
-        { "sentiment", ollamaSentimentCommandTable }
+        { "reload",      HandleOllamaReloadCommand,  SEC_ADMINISTRATOR, Console::Yes },
+        { "sentiment",   ollamaSentimentCommandTable },
+        { "personality", ollamaPersonalityCommandTable }
     };
 
     static ChatCommandTable commandTable =
@@ -41,6 +51,14 @@ bool OllamaChatConfigCommand::HandleOllamaReloadCommand(ChatHandler* handler)
 {
     sConfigMgr->Reload();
     LoadOllamaChatConfig();
+
+    // Clear personality assignments if RP personalities are disabled
+    // This ensures that when re-enabled later, bots get fresh random assignments
+    if (!g_EnableRPPersonalities)
+    {
+        ClearAllBotPersonalities();
+    }
+
     LoadBotPersonalityList();
     LoadBotConversationHistoryFromDB();
     InitializeSentimentTracking();
@@ -77,8 +95,8 @@ bool OllamaChatConfigCommand::HandleOllamaSentimentViewCommand(ChatHandler* hand
                 Player* player = ObjectAccessor::FindPlayer(ObjectGuid(playerGuid));
                 std::string playerNameStr = player ? player->GetName() : std::to_string(playerGuid);
                 
-                handler->PSendSysMessage("  Bot '%s' -> Player '%s': %.3f", 
-                                        botNameStr.c_str(), playerNameStr.c_str(), sentiment);
+                handler->SendSysMessage(fmt::format("  Bot '{}' -> Player '{}': {:.3f}", 
+                                        botNameStr, playerNameStr, sentiment));
             }
         }
         return true;
@@ -93,12 +111,12 @@ bool OllamaChatConfigCommand::HandleOllamaSentimentViewCommand(ChatHandler* hand
         targetBot = ObjectAccessor::FindPlayerByName(*botName);
         if (!targetBot)
         {
-            handler->PSendSysMessage("OllamaChat: Bot '%s' not found.", botName->c_str());
+            handler->SendSysMessage(fmt::format("OllamaChat: Bot '{}' not found.", *botName));
             return true;
         }
         if (!sPlayerbotsMgr->GetPlayerbotAI(targetBot))
         {
-            handler->PSendSysMessage("OllamaChat: Player '%s' is not a bot.", botName->c_str());
+            handler->SendSysMessage(fmt::format("OllamaChat: Player '{}' is not a bot.", *botName));
             return true;
         }
     }
@@ -108,7 +126,7 @@ bool OllamaChatConfigCommand::HandleOllamaSentimentViewCommand(ChatHandler* hand
         targetPlayer = ObjectAccessor::FindPlayerByName(*playerName);
         if (!targetPlayer)
         {
-            handler->PSendSysMessage("OllamaChat: Player '%s' not found.", playerName->c_str());
+            handler->SendSysMessage(fmt::format("OllamaChat: Player '{}' not found.", *playerName));
             return true;
         }
     }
@@ -117,8 +135,8 @@ bool OllamaChatConfigCommand::HandleOllamaSentimentViewCommand(ChatHandler* hand
     if (targetBot && targetPlayer)
     {
         float sentiment = GetBotPlayerSentiment(targetBot->GetGUID().GetRawValue(), targetPlayer->GetGUID().GetRawValue());
-        handler->PSendSysMessage("OllamaChat: Bot '%s' -> Player '%s': %.3f", 
-                                targetBot->GetName().c_str(), targetPlayer->GetName().c_str(), sentiment);
+        handler->SendSysMessage(fmt::format("OllamaChat: Bot '{}' -> Player '{}': {:.3f}", 
+                                targetBot->GetName(), targetPlayer->GetName(), sentiment));
     }
     else if (targetBot)
     {
@@ -129,16 +147,16 @@ bool OllamaChatConfigCommand::HandleOllamaSentimentViewCommand(ChatHandler* hand
         auto botIt = g_BotPlayerSentiments.find(botGuid);
         if (botIt == g_BotPlayerSentiments.end() || botIt->second.empty())
         {
-            handler->PSendSysMessage("OllamaChat: No sentiment data found for bot '%s'.", targetBot->GetName().c_str());
+            handler->SendSysMessage(fmt::format("OllamaChat: No sentiment data found for bot '{}'.", targetBot->GetName()));
             return true;
         }
 
-        handler->PSendSysMessage("OllamaChat: Sentiment data for bot '%s':", targetBot->GetName().c_str());
+        handler->SendSysMessage(fmt::format("OllamaChat: Sentiment data for bot '{}':", targetBot->GetName()));
         for (const auto& [playerGuid, sentiment] : botIt->second)
         {
             Player* player = ObjectAccessor::FindPlayer(ObjectGuid(playerGuid));
             std::string playerNameStr = player ? player->GetName() : std::to_string(playerGuid);
-            handler->PSendSysMessage("  -> Player '%s': %.3f", playerNameStr.c_str(), sentiment);
+            handler->SendSysMessage(fmt::format("  -> Player '{}': {:.3f}", playerNameStr, sentiment));
         }
     }
     else if (targetPlayer)
@@ -148,7 +166,7 @@ bool OllamaChatConfigCommand::HandleOllamaSentimentViewCommand(ChatHandler* hand
         std::lock_guard<std::mutex> lock(g_SentimentMutex);
         
         bool found = false;
-        handler->PSendSysMessage("OllamaChat: Sentiment data involving player '%s':", targetPlayer->GetName().c_str());
+        handler->SendSysMessage(fmt::format("OllamaChat: Sentiment data involving player '{}':", targetPlayer->GetName()));
         
         for (const auto& [botGuid, playerMap] : g_BotPlayerSentiments)
         {
@@ -157,14 +175,14 @@ bool OllamaChatConfigCommand::HandleOllamaSentimentViewCommand(ChatHandler* hand
             {
                 Player* bot = ObjectAccessor::FindPlayer(ObjectGuid(botGuid));
                 std::string botNameStr = bot ? bot->GetName() : std::to_string(botGuid);
-                handler->PSendSysMessage("  Bot '%s' -> %.3f", botNameStr.c_str(), playerIt->second);
+                handler->SendSysMessage(fmt::format("  Bot '{}' -> {:.3f}", botNameStr, playerIt->second));
                 found = true;
             }
         }
         
         if (!found)
         {
-            handler->PSendSysMessage("OllamaChat: No sentiment data found involving player '%s'.", targetPlayer->GetName().c_str());
+            handler->SendSysMessage(fmt::format("OllamaChat: No sentiment data found involving player '{}'.", targetPlayer->GetName()));
         }
     }
 
@@ -182,19 +200,19 @@ bool OllamaChatConfigCommand::HandleOllamaSentimentSetCommand(ChatHandler* handl
     Player* bot = ObjectAccessor::FindPlayerByName(botName);
     if (!bot)
     {
-        handler->PSendSysMessage("OllamaChat: Bot '%s' not found.", botName.c_str());
+        handler->SendSysMessage(fmt::format("OllamaChat: Bot '{}' not found.", botName));
         return true;
     }
     if (!sPlayerbotsMgr->GetPlayerbotAI(bot))
     {
-        handler->PSendSysMessage("OllamaChat: Player '%s' is not a bot.", botName.c_str());
+        handler->SendSysMessage(fmt::format("OllamaChat: Player '{}' is not a bot.", botName));
         return true;
     }
 
     Player* player = ObjectAccessor::FindPlayerByName(playerName);
     if (!player)
     {
-        handler->PSendSysMessage("OllamaChat: Player '%s' not found.", playerName.c_str());
+        handler->SendSysMessage(fmt::format("OllamaChat: Player '{}' not found.", playerName));
         return true;
     }
 
@@ -205,8 +223,8 @@ bool OllamaChatConfigCommand::HandleOllamaSentimentSetCommand(ChatHandler* handl
     }
 
     SetBotPlayerSentiment(bot->GetGUID().GetRawValue(), player->GetGUID().GetRawValue(), sentimentValue);
-    handler->PSendSysMessage("OllamaChat: Set sentiment between bot '%s' and player '%s' to %.3f.", 
-                            botName.c_str(), playerName.c_str(), sentimentValue);
+    handler->SendSysMessage(fmt::format("OllamaChat: Set sentiment between bot '{}' and player '{}' to {:.3f}.", 
+                            botName, playerName, sentimentValue));
     return true;
 }
 
@@ -228,7 +246,7 @@ bool OllamaChatConfigCommand::HandleOllamaSentimentResetCommand(ChatHandler* han
             count += playerMap.size();
         }
         g_BotPlayerSentiments.clear();
-        handler->PSendSysMessage("OllamaChat: Reset all sentiment data (%u records).", count);
+        handler->SendSysMessage(fmt::format("OllamaChat: Reset all sentiment data ({} records).", count));
         return true;
     }
 
@@ -240,12 +258,12 @@ bool OllamaChatConfigCommand::HandleOllamaSentimentResetCommand(ChatHandler* han
         targetBot = ObjectAccessor::FindPlayerByName(*botName);
         if (!targetBot)
         {
-            handler->PSendSysMessage("OllamaChat: Bot '%s' not found.", botName->c_str());
+            handler->SendSysMessage(fmt::format("OllamaChat: Bot '{}' not found.", *botName));
             return true;
         }
         if (!sPlayerbotsMgr->GetPlayerbotAI(targetBot))
         {
-            handler->PSendSysMessage("OllamaChat: Player '%s' is not a bot.", botName->c_str());
+            handler->SendSysMessage(fmt::format("OllamaChat: Player '{}' is not a bot.", *botName));
             return true;
         }
     }
@@ -255,7 +273,7 @@ bool OllamaChatConfigCommand::HandleOllamaSentimentResetCommand(ChatHandler* han
         targetPlayer = ObjectAccessor::FindPlayerByName(*playerName);
         if (!targetPlayer)
         {
-            handler->PSendSysMessage("OllamaChat: Player '%s' not found.", playerName->c_str());
+            handler->SendSysMessage(fmt::format("OllamaChat: Player '{}' not found.", *playerName));
             return true;
         }
     }
@@ -264,8 +282,8 @@ bool OllamaChatConfigCommand::HandleOllamaSentimentResetCommand(ChatHandler* han
     {
         // Reset specific bot-player sentiment
         SetBotPlayerSentiment(targetBot->GetGUID().GetRawValue(), targetPlayer->GetGUID().GetRawValue(), g_SentimentDefaultValue);
-        handler->PSendSysMessage("OllamaChat: Reset sentiment between bot '%s' and player '%s' to default (%.3f).", 
-                                targetBot->GetName().c_str(), targetPlayer->GetName().c_str(), g_SentimentDefaultValue);
+        handler->SendSysMessage(fmt::format("OllamaChat: Reset sentiment between bot '{}' and player '{}' to default ({:.3f}).", 
+                                targetBot->GetName(), targetPlayer->GetName(), g_SentimentDefaultValue));
     }
     else if (targetBot)
     {
@@ -278,12 +296,12 @@ bool OllamaChatConfigCommand::HandleOllamaSentimentResetCommand(ChatHandler* han
         {
             uint32_t count = botIt->second.size();
             g_BotPlayerSentiments.erase(botIt);
-            handler->PSendSysMessage("OllamaChat: Reset all sentiment data for bot '%s' (%u records).", 
-                                    targetBot->GetName().c_str(), count);
+            handler->SendSysMessage(fmt::format("OllamaChat: Reset all sentiment data for bot '{}' ({} records).", 
+                                    targetBot->GetName(), count));
         }
         else
         {
-            handler->PSendSysMessage("OllamaChat: No sentiment data found for bot '%s'.", targetBot->GetName().c_str());
+            handler->SendSysMessage(fmt::format("OllamaChat: No sentiment data found for bot '{}'.", targetBot->GetName()));
         }
     }
     else if (targetPlayer)
@@ -303,9 +321,98 @@ bool OllamaChatConfigCommand::HandleOllamaSentimentResetCommand(ChatHandler* han
             }
         }
         
-        handler->PSendSysMessage("OllamaChat: Reset all sentiment data involving player '%s' (%u records).", 
-                                targetPlayer->GetName().c_str(), count);
+        handler->SendSysMessage(fmt::format("OllamaChat: Reset all sentiment data involving player '{}' ({} records).", 
+                                targetPlayer->GetName(), count));
     }
 
+    return true;
+}
+
+bool OllamaChatConfigCommand::HandleOllamaPersonalityGetCommand(ChatHandler* handler, std::string botName)
+{
+    Player* bot = ObjectAccessor::FindPlayerByName(botName);
+    if (!bot)
+    {
+        handler->SendSysMessage(fmt::format("OllamaChat: Bot '{}' not found.", botName));
+        return true;
+    }
+    
+    if (!sPlayerbotsMgr->GetPlayerbotAI(bot))
+    {
+        handler->SendSysMessage(fmt::format("OllamaChat: Player '{}' is not a bot.", botName));
+        return true;
+    }
+    
+    std::string personality = GetBotPersonality(bot);
+    std::string prompt = GetPersonalityPromptAddition(personality);
+    
+    handler->SendSysMessage(fmt::format("OllamaChat: Bot '{}' has personality '{}'", botName, personality));
+    handler->SendSysMessage(fmt::format("  Prompt: {}", prompt));
+    
+    return true;
+}
+
+bool OllamaChatConfigCommand::HandleOllamaPersonalitySetCommand(ChatHandler* handler, std::string botName, std::string personality)
+{
+    Player* bot = ObjectAccessor::FindPlayerByName(botName);
+    if (!bot)
+    {
+        handler->SendSysMessage(fmt::format("OllamaChat: Bot '{}' not found.", botName));
+        return true;
+    }
+    
+    if (!sPlayerbotsMgr->GetPlayerbotAI(bot))
+    {
+        handler->SendSysMessage(fmt::format("OllamaChat: Player '{}' is not a bot.", botName));
+        return true;
+    }
+    
+    if (!PersonalityExists(personality))
+    {
+        handler->SendSysMessage(fmt::format("OllamaChat: Personality '{}' does not exist. Use '.ollama personality list' to see available personalities.", personality));
+        return true;
+    }
+    
+    if (SetBotPersonality(bot, personality))
+    {
+        std::string prompt = GetPersonalityPromptAddition(personality);
+        handler->SendSysMessage(fmt::format("OllamaChat: Set bot '{}' personality to '{}'", botName, personality));
+        handler->SendSysMessage(fmt::format("  Prompt: {}", prompt));
+    }
+    else
+    {
+        handler->SendSysMessage(fmt::format("OllamaChat: Failed to set personality for bot '{}'.", botName));
+    }
+    
+    return true;
+}
+
+bool OllamaChatConfigCommand::HandleOllamaPersonalityListCommand(ChatHandler* handler)
+{
+    std::vector<std::string> personalities = GetAllPersonalityKeys();
+    
+    if (personalities.empty())
+    {
+        handler->SendSysMessage("OllamaChat: No personalities loaded.");
+        return true;
+    }
+    
+    handler->SendSysMessage(fmt::format("OllamaChat: Available personalities ({} total, {} random-assignable):", 
+                            personalities.size(), g_PersonalityKeysRandomOnly.size()));
+    
+    for (const auto& personality : personalities)
+    {
+        std::string prompt = GetPersonalityPromptAddition(personality);
+        
+        // Check if this personality is manual-only
+        bool isManualOnly = (std::find(g_PersonalityKeysRandomOnly.begin(), g_PersonalityKeysRandomOnly.end(), personality) 
+                            == g_PersonalityKeysRandomOnly.end());
+        
+        std::string manualTag = isManualOnly ? " [MANUAL ONLY]" : "";
+        
+        handler->SendSysMessage(fmt::format("  - {}{}", personality, manualTag));
+        handler->SendSysMessage(fmt::format("    {}", prompt));
+    }
+    
     return true;
 }
