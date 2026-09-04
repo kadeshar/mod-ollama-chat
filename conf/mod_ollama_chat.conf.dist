@@ -208,6 +208,17 @@ OllamaChat.BotReplyChance.Guild = 5
 #                  When set to 0 (false), bots will not reply to any whispers.
 #                  When set to 1 (true), bots will reply to whispers based on normal reply chances.
 #     Default:     0 (false)
+#
+#        A whisper is direct address, so when this is on the bot ALWAYS
+#        answers. It is not subject to PlayerReplyChance.* (it used to borrow
+#        PlayerReplyChance.Say, so lowering that randomly swallowed whispers
+#        and setting it to 0 silenced them entirely), and it is not held back
+#        by BotCooldownSeconds, ScopeCooldownSeconds, ScopeMessagesPerMinute or
+#        the repetition filter -- those pace ambient chatter and have no
+#        business silencing an answer to a direct question.
+#
+#        GlobalMessagesPerMinute still applies: that one protects the LLM
+#        backend rather than pacing the bots.
 OllamaChat.EnableWhisperReplies = 0
 
 # OllamaChat.MaxBotsToPick

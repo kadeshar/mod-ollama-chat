@@ -1422,15 +1422,29 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
         // General/Trade/Custom channel type
         chance = senderIsBot ? g_BotReplyChance_Channel : g_PlayerReplyChance_Channel;
     }
+    else if (sourceLocal == SRC_WHISPER_LOCAL)
+    {
+        // A whisper is direct address -- as explicit as being named, and the
+        // bot is the only recipient. It is not subject to the ambient reply
+        // chance; EnableWhisperReplies is the whole gate.
+        //
+        // This used to fall through to the Say chance below, so lowering
+        // PlayerReplyChance.Say randomly swallowed whispers, and setting it to
+        // 0 meant a whispered bot never answered at all even with
+        // EnableWhisperReplies = 1.
+        chance = 100;
+    }
     else
     {
-        // Default fallback (whispers, etc.) - use Say chances
+        // Default fallback - use Say chances
         chance = senderIsBot ? g_BotReplyChance_Say : g_PlayerReplyChance_Say;
     }
     
     // Each bot->bot hop makes the next reply less likely, so a chain runs out
-    // of energy on its own well before it hits the hard depth ceiling.
-    if (senderIsBot)
+    // of energy on its own well before it hits the hard depth ceiling. Never
+    // applied to a whisper: bot-to-bot whispers are refused long before this,
+    // so a whisper here is always a person talking to a bot directly.
+    if (senderIsBot && sourceLocal != SRC_WHISPER_LOCAL)
         chance = Governor_ApplyChainDecay(chance, chainDepth);
 
     if(g_DebugEnabled)
@@ -1634,7 +1648,11 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
         // Everything below runs on the world thread: prompt building reads
         // live world state, and the governor decides before we spend an LLM
         // call rather than after.
-        if (!Governor_CanSend(bot->GetGUID(), scopeKey))
+        // A whisper is owed an answer, so it skips the pacing cooldowns. The
+        // global messages-per-minute ceiling still applies inside.
+        const bool directAddress = (sourceLocal == SRC_WHISPER_LOCAL);
+
+        if (!Governor_CanSend(bot->GetGUID(), scopeKey, directAddress))
         {
             if (g_DebugEnabled)
                 LOG_INFO("module.ollamachat",
