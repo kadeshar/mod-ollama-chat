@@ -44,10 +44,17 @@ uint32_t Governor_ApplyChainDecay(uint32_t baseChancePct, uint8_t depth);
 // Checks per-bot cooldown, per-scope cooldown, scope rate and global rate.
 // On success the send is reserved (all counters advance), so call this exactly
 // once per message actually being committed.
-bool Governor_TryConsumeSend(ObjectGuid botGuid, const std::string& scopeKey);
+// `directAddress` marks a reply the bot owes someone who spoke straight to it
+// -- a whisper. Those skip the per-bot and per-scope pacing cooldowns, which
+// exist to stop ambient chatter running hot and have no business silencing an
+// answer to a direct question. The global messages-per-minute ceiling still
+// applies: that one protects the LLM backend, not the pacing.
+bool Governor_TryConsumeSend(ObjectGuid botGuid, const std::string& scopeKey,
+                             bool directAddress = false);
 
 // Same checks without reserving, for deciding whether to spend an LLM call.
-bool Governor_CanSend(ObjectGuid botGuid, const std::string& scopeKey);
+bool Governor_CanSend(ObjectGuid botGuid, const std::string& scopeKey,
+                      bool directAddress = false);
 
 // --- repetition -----------------------------------------------------------
 

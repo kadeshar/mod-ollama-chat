@@ -182,15 +182,21 @@ namespace
             return 0.0f;
 
         // Iterate the smaller map.
-        const GramCounts& small = ga.size() <= gb.size() ? ga : gb;
-        const GramCounts& large = ga.size() <= gb.size() ? gb : ga;
+        //
+        // Not named `small`: the Windows SDK's rpcndr.h has `#define small
+        // char`, so on any translation unit that ends up including it this
+        // read as `const GramCounts& char = ...` and failed to compile. It
+        // built here only because our include chain happens not to pull that
+        // header in -- which is luck, not design.
+        const GramCounts& smaller = ga.size() <= gb.size() ? ga : gb;
+        const GramCounts& larger  = ga.size() <= gb.size() ? gb : ga;
 
         double dot = 0.0;
-        for (const auto& [gram, c] : small)
+        for (const auto& [gram, count] : smaller)
         {
-            auto it = large.find(gram);
-            if (it != large.end())
-                dot += double(c) * it->second;
+            auto it = larger.find(gram);
+            if (it != larger.end())
+                dot += double(count) * it->second;
         }
 
         return static_cast<float>(dot / (na * nb));
@@ -289,32 +295,42 @@ uint32_t Governor_ApplyChainDecay(uint32_t baseChancePct, uint8_t depth)
 namespace
 {
     bool CheckSendLocked(ObjectGuid botGuid, const std::string& scopeKey,
-                         TimePoint now, bool reserve)
+                         TimePoint now, bool reserve, bool directAddress)
     {
         const uint64_t raw = botGuid.GetRawValue();
         BotState&   bot   = g_bots[raw];
         ScopeState& scope = g_scopes[scopeKey];
 
-        if (g_BotCooldownSeconds > 0 &&
-            SecondsSince(bot.lastSend, now) < double(g_BotCooldownSeconds))
+        // Pacing, skipped for direct address. A bot that just said something
+        // in /say would otherwise sit on its cooldown and silently ignore a
+        // whisper, which reads as broken rather than as rate limiting.
+        if (!directAddress)
         {
-            ++g_stats.blockedCooldown;
-            return false;
-        }
+            if (g_BotCooldownSeconds > 0 &&
+                SecondsSince(bot.lastSend, now) < double(g_BotCooldownSeconds))
+            {
+                ++g_stats.blockedCooldown;
+                return false;
+            }
 
-        if (g_ScopeCooldownSeconds > 0 &&
-            SecondsSince(scope.lastSend, now) < double(g_ScopeCooldownSeconds))
-        {
-            ++g_stats.blockedCooldown;
-            return false;
-        }
+            if (g_ScopeCooldownSeconds > 0 &&
+                SecondsSince(scope.lastSend, now) < double(g_ScopeCooldownSeconds))
+            {
+                ++g_stats.blockedCooldown;
+                return false;
+            }
 
-        TrimWindow(scope.sendTimes, now, 60.0);
-        if (g_ScopeMessagesPerMinute > 0 &&
-            scope.sendTimes.size() >= g_ScopeMessagesPerMinute)
+            TrimWindow(scope.sendTimes, now, 60.0);
+            if (g_ScopeMessagesPerMinute > 0 &&
+                scope.sendTimes.size() >= g_ScopeMessagesPerMinute)
+            {
+                ++g_stats.blockedRate;
+                return false;
+            }
+        }
+        else
         {
-            ++g_stats.blockedRate;
-            return false;
+            TrimWindow(scope.sendTimes, now, 60.0);
         }
 
         TrimWindow(g_globalSends, now, 60.0);
@@ -337,16 +353,18 @@ namespace
     }
 }
 
-bool Governor_TryConsumeSend(ObjectGuid botGuid, const std::string& scopeKey)
+bool Governor_TryConsumeSend(ObjectGuid botGuid, const std::string& scopeKey,
+                             bool directAddress)
 {
     std::lock_guard<std::mutex> lock(g_mutex);
-    return CheckSendLocked(botGuid, scopeKey, Clock::now(), true);
+    return CheckSendLocked(botGuid, scopeKey, Clock::now(), true, directAddress);
 }
 
-bool Governor_CanSend(ObjectGuid botGuid, const std::string& scopeKey)
+bool Governor_CanSend(ObjectGuid botGuid, const std::string& scopeKey,
+                      bool directAddress)
 {
     std::lock_guard<std::mutex> lock(g_mutex);
-    return CheckSendLocked(botGuid, scopeKey, Clock::now(), false);
+    return CheckSendLocked(botGuid, scopeKey, Clock::now(), false, directAddress);
 }
 
 // --- repetition -----------------------------------------------------------
