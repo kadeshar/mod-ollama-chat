@@ -39,6 +39,12 @@ namespace
         TimePoint             lastEvent{};
         std::deque<Utterance> history;
         std::unordered_map<uint64_t, TimePoint> emoteReactions;  // player guid -> last
+
+        // Who this bot is mid-conversation with, and where: player guid ->
+        // scope key -> when it last answered them there. While that is fresh
+        // the next thing that person says in that scope is a continuation, not
+        // ambient chatter, so it bypasses the pacing cooldowns.
+        std::unordered_map<uint64_t, std::unordered_map<std::string, TimePoint>> conversations;
     };
 
     struct ScopeState
@@ -290,6 +296,45 @@ uint32_t Governor_ApplyChainDecay(uint32_t baseChancePct, uint8_t depth)
     return static_cast<uint32_t>(chance + 0.5);
 }
 
+// --- open conversations ---------------------------------------------------
+
+// Record that this bot just answered this player here. Call it only when the
+// addressee is a real person: an open conversation bypasses pacing, and
+// letting bots open one with each other is how a bot-to-bot loop escapes
+// every brake in this file.
+void Governor_NoteConversation(ObjectGuid botGuid, ObjectGuid playerGuid,
+                               const std::string& scopeKey)
+{
+    if (!playerGuid || g_ConversationWindowSeconds == 0)
+        return;
+
+    std::lock_guard<std::mutex> lock(g_mutex);
+    g_bots[botGuid.GetRawValue()].conversations[playerGuid.GetRawValue()][scopeKey] = Clock::now();
+}
+
+bool Governor_InConversation(ObjectGuid botGuid, ObjectGuid playerGuid,
+                             const std::string& scopeKey)
+{
+    if (!playerGuid || g_ConversationWindowSeconds == 0)
+        return false;
+
+    std::lock_guard<std::mutex> lock(g_mutex);
+
+    auto botIt = g_bots.find(botGuid.GetRawValue());
+    if (botIt == g_bots.end())
+        return false;
+
+    auto playerIt = botIt->second.conversations.find(playerGuid.GetRawValue());
+    if (playerIt == botIt->second.conversations.end())
+        return false;
+
+    auto scopeIt = playerIt->second.find(scopeKey);
+    if (scopeIt == playerIt->second.end())
+        return false;
+
+    return SecondsSince(scopeIt->second, Clock::now()) <= double(g_ConversationWindowSeconds);
+}
+
 // --- cooldowns and rate limits -------------------------------------------
 
 namespace
@@ -530,10 +575,14 @@ void Governor_OnPlayerLogout(ObjectGuid guid)
     std::lock_guard<std::mutex> lock(g_mutex);
     g_bots.erase(guid.GetRawValue());
 
-    // Also drop this player from every bot's emote debounce table.
+    // Also drop this player from every bot's emote debounce table and from
+    // their open conversations -- a fresh login starts a fresh exchange.
     const uint64_t raw = guid.GetRawValue();
     for (auto& [botGuid, state] : g_bots)
+    {
         state.emoteReactions.erase(raw);
+        state.conversations.erase(raw);
+    }
 }
 
 void Governor_Update()
@@ -572,6 +621,16 @@ void Governor_Update()
             it = (SecondsSince(it->second, now) > staleAfter)
                      ? bot.emoteReactions.erase(it)
                      : std::next(it);
+
+        for (auto pit = bot.conversations.begin(); pit != bot.conversations.end(); )
+        {
+            for (auto sit = pit->second.begin(); sit != pit->second.end(); )
+                sit = (SecondsSince(sit->second, now) > double(g_ConversationWindowSeconds))
+                          ? pit->second.erase(sit)
+                          : std::next(sit);
+
+            pit = pit->second.empty() ? bot.conversations.erase(pit) : std::next(pit);
+        }
     }
 
     g_stats.trackedBots   = static_cast<uint32_t>(g_bots.size());

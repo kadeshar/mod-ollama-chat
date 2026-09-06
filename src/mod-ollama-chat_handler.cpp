@@ -103,14 +103,19 @@ static size_t OllamaFindBotNameMention(const std::string& msg, const std::string
 // answer once and then ignore the next several things said to it, which reads
 // as broken rather than as rate limiting.
 //
-// Three things count:
+// Four things count:
 //   * a whisper -- the bot is the only recipient
 //   * being named -- "Uynya, what do you think?"
+//   * an open conversation -- this bot already answered this person here, so
+//     the next thing they say is a turn in that exchange. Without this a bot
+//     answers the opening line and then goes quiet unless it is named again
+//     every single message, which is the same bug one step later.
 //   * party/raid chat from a person, in a small group the bot belongs to --
 //     a five-person party is a conversation, not a crowd. Above
 //     DirectAddressGroupSize members it is a crowd again and pacing returns.
 static bool OllamaIsDirectAddress(Player* bot, Player* speaker, ChatChannelSourceLocal source,
-                                  const std::string& msg, bool senderIsBot)
+                                  const std::string& msg, bool senderIsBot,
+                                  const std::string& scopeKey)
 {
     if (source == SRC_WHISPER_LOCAL)
         return true;
@@ -123,6 +128,10 @@ static bool OllamaIsDirectAddress(Player* bot, Player* speaker, ChatChannelSourc
 
     if (senderIsBot)
         return false;   // only a person's turn obliges an answer
+
+    // Already talking to this person here.
+    if (speaker && Governor_InConversation(bot->GetGUID(), speaker->GetGUID(), scopeKey))
+        return true;
 
     if (source != SRC_PARTY_LOCAL && source != SRC_RAID_LOCAL)
         return false;
@@ -1539,7 +1548,10 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
                 player->GetName(), senderIsBot ? "BOT" : "PLAYER", ChatChannelSourceLocalStr[sourceLocal], chainDepth, chance, candidateBots.size());
     }
 
-    if (chance == 0)
+    // Not just an optimisation: this return also used to swallow the name-
+    // mention path, so a channel set to 0% ignored a bot being addressed by
+    // name. Direct address has its own chance, so only bail when both are off.
+    if (chance == 0 && g_DirectAddressReplyChance == 0)
         return;
     
     std::vector<Player*> finalCandidates;
@@ -1636,18 +1648,28 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
                     continue;
                 }
 
+                // A bot already mid-conversation with this person answers at
+                // DirectAddressReplyChance rather than the ambient rate for the
+                // channel. Someone who has been talking to you does not go 50/50
+                // on whether to acknowledge your next sentence.
+                const bool botIsAddressed =
+                    OllamaIsDirectAddress(bot, player, sourceLocal, trimmedMsg, senderIsBot, scopeKey);
+                const uint32_t botChance = botIsAddressed
+                                               ? std::max(chance, g_DirectAddressReplyChance)
+                                               : chance;
+
                 uint32_t roll = urand(0, 99);
-                if (roll < chance)
+                if (roll < botChance)
                 {
                     finalCandidates.push_back(bot);
                     if(g_DebugEnabled)
                     {
-                        LOG_INFO("module.ollamachat", "[Ollama Chat] Bot {} PASSED chance roll ({} < {}%)", bot->GetName(), roll, chance);
+                        LOG_INFO("module.ollamachat", "[Ollama Chat] Bot {} PASSED chance roll ({} < {}%{})", bot->GetName(), roll, botChance, botIsAddressed ? ", addressed" : "");
                     }
                 }
                 else if(g_DebugEnabled)
                 {
-                    LOG_INFO("module.ollamachat", "[Ollama Chat] Bot {} FAILED chance roll ({} >= {}%)", bot->GetName(), roll, chance);
+                    LOG_INFO("module.ollamachat", "[Ollama Chat] Bot {} FAILED chance roll ({} >= {}%{})", bot->GetName(), roll, botChance, botIsAddressed ? ", addressed" : "");
                 }
             }
         }
@@ -1709,7 +1731,7 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
         // A line aimed at this bot is owed an answer, so it skips the pacing
         // cooldowns. The global messages-per-minute ceiling still applies.
         const bool directAddress =
-            OllamaIsDirectAddress(bot, player, sourceLocal, trimmedMsg, senderIsBot);
+            OllamaIsDirectAddress(bot, player, sourceLocal, trimmedMsg, senderIsBot, scopeKey);
 
         if (!Governor_CanSend(bot->GetGUID(), scopeKey, directAddress))
         {

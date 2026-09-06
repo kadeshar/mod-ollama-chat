@@ -381,6 +381,19 @@ namespace
         Governor_RecordUtterance(botGuid, c.request.scopeKey, c.text);
         ++g_totalDelivered;
 
+        // This bot is now in a conversation with whoever it just answered, so
+        // their next line in this scope is a turn in it rather than ambient
+        // chatter. Only against a real person: an open conversation bypasses
+        // pacing, and letting two bots open one with each other is how a
+        // bot-to-bot loop would escape every brake in the governor.
+        if (c.request.targetGuid)
+        {
+            Player* addressee = ObjectAccessor::FindConnectedPlayer(ObjectGuid(c.request.targetGuid));
+            if (OllamaIsRealPlayer(addressee))
+                Governor_NoteConversation(botGuid, ObjectGuid(c.request.targetGuid),
+                                          c.request.scopeKey);
+        }
+
         // Body language. Safe here and only here: this is the world thread.
         ScheduleBotExpression(bot, ObjectGuid(c.request.targetGuid), c.emoteId,
                               g_BotExpressionDelayMs);

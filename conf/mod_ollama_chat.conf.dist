@@ -1140,6 +1140,35 @@ OllamaChat.Cooldown.PerScopeSeconds = 15
 #        Default: 5
 OllamaChat.Cooldown.DirectAddressGroupSize = 5
 
+#    OllamaChat.Cooldown.ConversationWindowSeconds
+#        How long a bot stays "in conversation" with someone after answering
+#        them, per channel. While that window is open, everything that person
+#        says in that channel counts as direct address for that bot: it skips
+#        the pacing cooldowns and replies at DirectAddressReplyChance.
+#
+#        This is what keeps a conversation going. Without it a bot answers the
+#        first line, and then the follow-ups -- which usually do not repeat the
+#        bot name -- fall back to ambient pacing and it goes quiet again.
+#
+#        Only ever opened against a real player, never bot-to-bot; that would
+#        let two bots talk each other past every brake in the governor.
+#        Set to 0 to require a name mention on every single line.
+#        Default: 180
+OllamaChat.Cooldown.ConversationWindowSeconds = 180
+
+#    OllamaChat.DirectAddressReplyChance
+#        Reply chance used instead of the per-channel PlayerReplyChance when the
+#        line is aimed at this bot -- whispered, naming it, mid-conversation, or
+#        in a small party. Someone who has been talking to you does not go 50/50
+#        on whether to acknowledge your next sentence.
+#
+#        Never lowers a channel chance that is already higher. Set to 0 to turn
+#        the boost off and use the ambient per-channel chance everywhere; note
+#        that 0 also restores the old behaviour where a channel set to 0%
+#        ignores a bot being addressed by name.
+#        Default: 95
+OllamaChat.DirectAddressReplyChance = 95
+
 #    OllamaChat.RateLimit.ScopePerMinute
 #        Ceiling on bot messages per channel per minute. 0 = unlimited.
 #        Default: 8

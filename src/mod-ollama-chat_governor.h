@@ -39,6 +39,20 @@ bool Governor_HasRecentHuman(const std::string& scopeKey);
 bool     Governor_ChainDepthAllowed(uint8_t depth);
 uint32_t Governor_ApplyChainDecay(uint32_t baseChancePct, uint8_t depth);
 
+// --- open conversations ---------------------------------------------------
+
+// A bot that has already answered someone is in a conversation with them, and
+// the next thing that person says is a turn in it rather than ambient chatter.
+// This is what makes a bot keep talking after the opening exchange without
+// having to be named again every single line.
+//
+// Recorded per scope, so answering someone in party does not exempt this bot
+// from pacing in General. Only ever recorded against a real player.
+void Governor_NoteConversation(ObjectGuid botGuid, ObjectGuid playerGuid,
+                               const std::string& scopeKey);
+bool Governor_InConversation(ObjectGuid botGuid, ObjectGuid playerGuid,
+                             const std::string& scopeKey);
+
 // --- cooldowns and rate limits -------------------------------------------
 
 // Checks per-bot cooldown, per-scope cooldown, scope rate and global rate.

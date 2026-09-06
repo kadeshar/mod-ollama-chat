@@ -188,6 +188,12 @@ extern uint32_t g_ScopeCooldownSeconds;
 // so a bot answering a person in them is not held back by the ambient
 // pacing cooldowns. 0 disables the group case entirely.
 extern uint32_t g_DirectAddressGroupSize;
+// How long after a bot answers someone that person keeps its attention in
+// that scope. 0 disables the open-conversation rule.
+extern uint32_t g_ConversationWindowSeconds;
+// Reply chance used instead of the ambient per-channel chance when the line
+// is aimed at this bot.
+extern uint32_t g_DirectAddressReplyChance;
 extern uint32_t g_ScopeMessagesPerMinute;
 extern uint32_t g_GlobalMessagesPerMinute;
 extern uint32_t g_BotHistorySize;
