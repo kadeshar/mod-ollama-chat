@@ -63,6 +63,80 @@
 static bool IsBotEligibleForChatChannelLocal(Player* bot, Player* player,
                                              ChatChannelSourceLocal source, Channel* channel = nullptr, Player* receiver = nullptr);
 
+// Position of botName inside msg as a whole word, or npos. Case-insensitive.
+// Hoisted out of ProcessChat because being named is also what makes a message
+// direct address, which the governor needs to know.
+static size_t OllamaFindBotNameMention(const std::string& msg, const std::string& botName)
+{
+    if (botName.empty() || msg.size() < botName.size())
+        return std::string::npos;
+
+    auto lower = [](const std::string& in)
+    {
+        std::string out = in;
+        for (char& c : out)
+            c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        return out;
+    };
+
+    const std::string lowerMsg     = lower(msg);
+    const std::string lowerBotName = lower(botName);
+
+    size_t pos = 0;
+    while ((pos = lowerMsg.find(lowerBotName, pos)) != std::string::npos)
+    {
+        const bool validStart = (pos == 0 || !std::isalnum(static_cast<unsigned char>(lowerMsg[pos - 1])));
+        const size_t endPos   = pos + lowerBotName.length();
+        const bool validEnd   = (endPos >= lowerMsg.length() || !std::isalnum(static_cast<unsigned char>(lowerMsg[endPos])));
+
+        if (validStart && validEnd)
+            return pos;
+        ++pos;
+    }
+    return std::string::npos;
+}
+
+// Is this line aimed at this bot in particular, rather than said to the room?
+//
+// Direct address skips the pacing cooldowns in the governor. Those exist to
+// stop ambient chatter running hot; applied to a conversation they make a bot
+// answer once and then ignore the next several things said to it, which reads
+// as broken rather than as rate limiting.
+//
+// Three things count:
+//   * a whisper -- the bot is the only recipient
+//   * being named -- "Uynya, what do you think?"
+//   * party/raid chat from a person, in a small group the bot belongs to --
+//     a five-person party is a conversation, not a crowd. Above
+//     DirectAddressGroupSize members it is a crowd again and pacing returns.
+static bool OllamaIsDirectAddress(Player* bot, Player* speaker, ChatChannelSourceLocal source,
+                                  const std::string& msg, bool senderIsBot)
+{
+    if (source == SRC_WHISPER_LOCAL)
+        return true;
+
+    if (!bot)
+        return false;
+
+    if (OllamaFindBotNameMention(msg, bot->GetName()) != std::string::npos)
+        return true;
+
+    if (senderIsBot)
+        return false;   // only a person's turn obliges an answer
+
+    if (source != SRC_PARTY_LOCAL && source != SRC_RAID_LOCAL)
+        return false;
+
+    if (g_DirectAddressGroupSize == 0)
+        return false;
+
+    Group* group = bot->GetGroup();
+    if (!group || !speaker || speaker->GetGroup() != group)
+        return false;
+
+    return group->GetMembersCount() <= g_DirectAddressGroupSize;
+}
+
 namespace
 {
     // Unlike Acore::AnyUnitInObjectRangeCheck this keeps dead creatures --
@@ -1095,13 +1169,25 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
     // --- conversation governor -------------------------------------------
     // One key per conversation space so cooldowns, rate limits and repetition
     // history are tracked per channel rather than globally.
+    //
+    // Party and raid chat keys on the group, not the zone. Keying it on the
+    // zone made two unrelated parties standing in Elwynn share one cooldown,
+    // one rate limit and one repetition history -- and made a party reset all
+    // three every time it walked over a zone border.
+    uint32_t scopeGroupOrZone = player->GetZoneId();
+    if (sourceLocal == SRC_PARTY_LOCAL || sourceLocal == SRC_RAID_LOCAL)
+    {
+        if (Group* senderGroup = player->GetGroup())
+            scopeGroupOrZone = senderGroup->GetGUID().GetCounter();
+    }
+
     const std::string scopeKey = Governor_MakeScopeKey(
         ChatChannelSourceLocalStr[sourceLocal],
         channel ? channel->GetChannelId() : 0,
         channel ? channel->GetName() : std::string(),
         (sourceLocal == SRC_GUILD_LOCAL || sourceLocal == SRC_OFFICER_LOCAL)
             ? player->GetGuildId() : 0,
-        player->GetZoneId());
+        scopeGroupOrZone);
 
     if (!senderIsBot)
     {
@@ -1479,37 +1565,9 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
         // Handle non-whisper chats with normal multi-bot logic
         std::vector<std::pair<size_t, Player*>> mentionedBots;
 
-        // Helper to convert string to lowercase safely
-        auto toLowerStr = [](const std::string& str) -> std::string {
-            std::string result = str;
-            for (char& c : result)
-            {
-                c = std::tolower(static_cast<unsigned char>(c));
-            }
-            return result;
-        };
-
-        // Helper to check if a bot name is mentioned as a complete word
-        auto isBotNameMentioned = [&trimmedMsg, &toLowerStr](const std::string& botName) -> size_t {
-            std::string lowerMsg = toLowerStr(trimmedMsg);
-            std::string lowerBotName = toLowerStr(botName);
-            
-            size_t pos = 0;
-            while ((pos = lowerMsg.find(lowerBotName, pos)) != std::string::npos)
-            {
-                // Check if it's a word boundary before the name
-                bool validStart = (pos == 0 || !std::isalnum(static_cast<unsigned char>(lowerMsg[pos - 1])));
-                // Check if it's a word boundary after the name
-                size_t endPos = pos + lowerBotName.length();
-                bool validEnd = (endPos >= lowerMsg.length() || !std::isalnum(static_cast<unsigned char>(lowerMsg[endPos])));
-                
-                if (validStart && validEnd)
-                {
-                    return pos; // Found a valid word-boundary match
-                }
-                pos++; // Continue searching
-            }
-            return std::string::npos;
+        // Whole-word, case-insensitive name match; see OllamaFindBotNameMention.
+        auto isBotNameMentioned = [&trimmedMsg](const std::string& botName) -> size_t {
+            return OllamaFindBotNameMention(trimmedMsg, botName);
         };
 
         for (Player* bot : candidateBots)
@@ -1648,9 +1706,10 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
         // Everything below runs on the world thread: prompt building reads
         // live world state, and the governor decides before we spend an LLM
         // call rather than after.
-        // A whisper is owed an answer, so it skips the pacing cooldowns. The
-        // global messages-per-minute ceiling still applies inside.
-        const bool directAddress = (sourceLocal == SRC_WHISPER_LOCAL);
+        // A line aimed at this bot is owed an answer, so it skips the pacing
+        // cooldowns. The global messages-per-minute ceiling still applies.
+        const bool directAddress =
+            OllamaIsDirectAddress(bot, player, sourceLocal, trimmedMsg, senderIsBot);
 
         if (!Governor_CanSend(bot->GetGUID(), scopeKey, directAddress))
         {
@@ -1671,6 +1730,7 @@ void PlayerBotChatHandler::ProcessChat(Player* player, uint32_t /*type*/, uint32
         request.channelName = channel ? channel->GetName() : std::string();
         request.channelId   = channel ? channel->GetChannelId() : 0;
         request.chainDepth  = chainDepth;
+        request.directAddress = directAddress;
         request.scopeKey    = scopeKey;
         request.prompt      = std::move(prompt);
         request.botName     = bot->GetName();

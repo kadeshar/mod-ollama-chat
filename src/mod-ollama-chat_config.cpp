@@ -113,6 +113,7 @@ bool     g_RequireRecentHuman            = true;
 uint32_t g_HumanWindowSeconds            = 120;
 uint32_t g_BotCooldownSeconds            = 45;
 uint32_t g_ScopeCooldownSeconds          = 15;
+uint32_t g_DirectAddressGroupSize        = 5;
 uint32_t g_ScopeMessagesPerMinute        = 8;
 uint32_t g_GlobalMessagesPerMinute       = 40;
 uint32_t g_BotHistorySize                = 12;
@@ -704,6 +705,7 @@ void LoadOllamaChatConfig()
     g_HumanWindowSeconds              = sConfigMgr->GetOption<uint32_t>("OllamaChat.BotConversation.HumanWindowSeconds", 120);
     g_BotCooldownSeconds              = sConfigMgr->GetOption<uint32_t>("OllamaChat.Cooldown.PerBotSeconds", 45);
     g_ScopeCooldownSeconds            = sConfigMgr->GetOption<uint32_t>("OllamaChat.Cooldown.PerScopeSeconds", 15);
+    g_DirectAddressGroupSize          = sConfigMgr->GetOption<uint32_t>("OllamaChat.Cooldown.DirectAddressGroupSize", 5);
     g_ScopeMessagesPerMinute          = sConfigMgr->GetOption<uint32_t>("OllamaChat.RateLimit.ScopePerMinute", 8);
     g_GlobalMessagesPerMinute         = sConfigMgr->GetOption<uint32_t>("OllamaChat.RateLimit.GlobalPerMinute", 40);
     g_BotHistorySize                  = sConfigMgr->GetOption<uint32_t>("OllamaChat.Repetition.BotHistorySize", 12);

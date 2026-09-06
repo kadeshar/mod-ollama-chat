@@ -336,16 +336,16 @@ namespace
 
         const ObjectGuid botGuid = bot->GetGUID();
 
-        // A whisper is direct address: the bot owes this person an answer, so
-        // it skips the suppressions that exist to pace ambient chatter. This
-        // matches the submit-time decision in ProcessChat.
-        const bool directAddress = (c.request.source == SRC_WHISPER_LOCAL);
+        // Direct address: the bot owes this person an answer, so it skips the
+        // suppressions that exist to pace ambient chatter. Decided at submit
+        // time in ProcessChat, where the Group was live to consult.
+        const bool directAddress = c.request.directAddress;
 
         // Repetition is checked at delivery rather than at submission, because
         // we only know what the model actually said now.
         //
-        // Skipped for a whisper. Ask a bot the same question twice and the
-        // same answer is correct -- suppressing it leaves the whisperer
+        // Skipped for direct address. Ask a bot the same question twice and
+        // the same answer is correct -- suppressing it leaves the asker
         // staring at silence, which reads as the bot being broken rather than
         // as anti-repetition working.
         if (!directAddress && Governor_IsRepetitive(botGuid, c.request.scopeKey, c.text))
@@ -597,6 +597,9 @@ void OllamaChat_DispatchEmoteReaction(Player* bot, Player* player, uint32_t text
     request.kind       = OllamaRequestKind::EventChatter;
     request.scopeKey   = Governor_MakeScopeKey("Say", 0, "", 0, bot->GetZoneId());
     request.triggerBotReplies = false;
+    // Someone emoted at this bot by name. Its own debounce paces this;
+    // the ambient say cooldown has no business also silencing it.
+    request.directAddress = true;
 
     request.prompt = BuildEmoteReactionPrompt(bot, player, textEmote);
     if (request.prompt.empty())

@@ -56,6 +56,13 @@ struct OllamaChatRequest
     uint8_t     chainDepth = 0;
     std::string scopeKey;
 
+    // This line was aimed at this bot in particular -- whispered, named, or
+    // said in a small party it belongs to -- rather than said to the room.
+    // Decided on the world thread at submit time, where the Group is live, and
+    // carried here so delivery does not have to guess it back from `source`.
+    // Direct address skips the pacing cooldowns and repetition suppression.
+    bool directAddress = false;
+
     // Generation.
     std::string       prompt;
     OllamaRequestKind kind = OllamaRequestKind::ChatReply;

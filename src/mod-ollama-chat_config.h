@@ -184,6 +184,10 @@ extern bool     g_RequireRecentHuman;
 extern uint32_t g_HumanWindowSeconds;
 extern uint32_t g_BotCooldownSeconds;
 extern uint32_t g_ScopeCooldownSeconds;
+// Party/raid groups at or below this many members count as direct address,
+// so a bot answering a person in them is not held back by the ambient
+// pacing cooldowns. 0 disables the group case entirely.
+extern uint32_t g_DirectAddressGroupSize;
 extern uint32_t g_ScopeMessagesPerMinute;
 extern uint32_t g_GlobalMessagesPerMinute;
 extern uint32_t g_BotHistorySize;

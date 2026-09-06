@@ -1108,7 +1108,9 @@ OllamaChat.BotConversation.RequireRecentHuman = 1
 OllamaChat.BotConversation.HumanWindowSeconds = 120
 
 #    OllamaChat.Cooldown.PerBotSeconds
-#        Minimum gap between two lines from the same bot.
+#        Minimum gap between two lines from the same bot. This paces ambient
+#        chatter and is deliberately skipped for direct address -- see
+#        OllamaChat.Cooldown.DirectAddressGroupSize below.
 #        Default: 45
 OllamaChat.Cooldown.PerBotSeconds = 45
 
@@ -1116,6 +1118,27 @@ OllamaChat.Cooldown.PerBotSeconds = 45
 #        Minimum gap between any two bot lines in the same channel.
 #        Default: 15
 OllamaChat.Cooldown.PerScopeSeconds = 15
+
+#    OllamaChat.Cooldown.DirectAddressGroupSize
+#        Party and raid chat from a real player counts as "direct address" when
+#        the group has this many members or fewer, which exempts the reply from
+#        the two pacing cooldowns above.
+#
+#        Those cooldowns exist to stop ambient chatter running hot. In a party
+#        they did the wrong thing: a bot answered the first thing said to it and
+#        then ignored the next 45 seconds of conversation, which looks like the
+#        bot is broken rather than like rate limiting working. A five-person
+#        party is a conversation; a 25-man raid is a crowd, so above this size
+#        pacing comes back.
+#
+#        Whispers and messages that name the bot are always direct address,
+#        whatever this is set to. Set to 0 to disable the group case and pace
+#        party chat like any other channel.
+#
+#        The global RateLimit.GlobalPerMinute ceiling still applies to direct
+#        address; that one protects the LLM backend, not the pacing.
+#        Default: 5
+OllamaChat.Cooldown.DirectAddressGroupSize = 5
 
 #    OllamaChat.RateLimit.ScopePerMinute
 #        Ceiling on bot messages per channel per minute. 0 = unlimited.
