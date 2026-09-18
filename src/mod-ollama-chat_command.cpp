@@ -2,6 +2,16 @@
 #include "mod-ollama-chat_config.h"
 #include "mod-ollama-chat_sentiment.h"
 #include "mod-ollama-chat_personality.h"
+#include "mod-ollama-chat_api.h"
+#include "mod-ollama-chat_capability.h"
+#include "mod-ollama-chat_dispatch.h"
+#include "mod-ollama-chat_governor.h"
+#include "mod-ollama-chat_response.h"
+#include "mod-ollama-chat_roleplay.h"
+#include "mod-ollama-chat-utilities.h"
+#include "Log.h"
+#include "DatabaseEnv.h"
+#include <thread>
 #include "Chat.h"
 #include "Config.h"
 #include "ObjectAccessor.h"
@@ -35,6 +45,8 @@ ChatCommandTable OllamaChatConfigCommand::GetCommands() const
     static ChatCommandTable ollamaReloadCommandTable =
     {
         { "reload",      HandleOllamaReloadCommand,  SEC_ADMINISTRATOR, Console::Yes },
+        { "status",      HandleOllamaStatusCommand,  SEC_ADMINISTRATOR, Console::Yes },
+        { "test",        HandleOllamaTestCommand,    SEC_ADMINISTRATOR, Console::Yes },
         { "sentiment",   ollamaSentimentCommandTable },
         { "personality", ollamaPersonalityCommandTable }
     };
@@ -51,6 +63,11 @@ bool OllamaChatConfigCommand::HandleOllamaReloadCommand(ChatHandler* handler)
 {
     sConfigMgr->Reload();
     LoadOllamaChatConfig();
+    Roleplay_Load();
+
+    // Re-probe: the operator may have just pointed the module at a different
+    // model, and think-mode support is per-model.
+    OllamaCapability_Init(true);
 
     // Clear personality assignments if RP personalities are disabled
     // This ensures that when re-enabled later, bots get fresh random assignments
@@ -246,6 +263,8 @@ bool OllamaChatConfigCommand::HandleOllamaSentimentResetCommand(ChatHandler* han
             count += playerMap.size();
         }
         g_BotPlayerSentiments.clear();
+        g_DirtySentiments.clear();
+        CharacterDatabase.Execute("DELETE FROM mod_ollama_chat_bot_player_sentiments");
         handler->SendSysMessage(fmt::format("OllamaChat: Reset all sentiment data ({} records).", count));
         return true;
     }
@@ -296,6 +315,17 @@ bool OllamaChatConfigCommand::HandleOllamaSentimentResetCommand(ChatHandler* han
         {
             uint32_t count = botIt->second.size();
             g_BotPlayerSentiments.erase(botIt);
+
+            for (auto it = g_DirtySentiments.begin(); it != g_DirtySentiments.end(); )
+            {
+                if (it->first == botGuid)
+                    it = g_DirtySentiments.erase(it);
+                else
+                    ++it;
+            }
+
+            CharacterDatabase.Execute(SafeFormat(
+                "DELETE FROM mod_ollama_chat_bot_player_sentiments WHERE bot_guid = {}", botGuid));
             handler->SendSysMessage(fmt::format("OllamaChat: Reset all sentiment data for bot '{}' ({} records).", 
                                     targetBot->GetName(), count));
         }
@@ -320,7 +350,18 @@ bool OllamaChatConfigCommand::HandleOllamaSentimentResetCommand(ChatHandler* han
                 count++;
             }
         }
-        
+
+        for (auto it = g_DirtySentiments.begin(); it != g_DirtySentiments.end(); )
+        {
+            if (it->second == playerGuid)
+                it = g_DirtySentiments.erase(it);
+            else
+                ++it;
+        }
+
+        CharacterDatabase.Execute(SafeFormat(
+            "DELETE FROM mod_ollama_chat_bot_player_sentiments WHERE player_guid = {}", playerGuid));
+
         handler->SendSysMessage(fmt::format("OllamaChat: Reset all sentiment data involving player '{}' ({} records).", 
                                 targetPlayer->GetName(), count));
     }
@@ -414,5 +455,99 @@ bool OllamaChatConfigCommand::HandleOllamaPersonalityListCommand(ChatHandler* ha
         handler->SendSysMessage(fmt::format("    {}", prompt));
     }
     
+    return true;
+}
+
+
+// ---------------------------------------------------------------------------
+// Diagnostics
+// ---------------------------------------------------------------------------
+
+bool OllamaChatConfigCommand::HandleOllamaStatusCommand(ChatHandler* handler)
+{
+    const OllamaDispatchStats dispatch = OllamaDispatch_GetStats();
+    const GovernorStats       gov      = Governor_GetStats();
+
+    handler->PSendSysMessage("|cff00ff00[Ollama Chat] Status|r");
+    handler->PSendSysMessage("Module: {}   Endpoint: {}   Model: {}",
+                             g_Enable ? "enabled" : "DISABLED",
+                             g_OllamaUrl, g_OllamaModel);
+    handler->PSendSysMessage("Think: {}", OllamaCapability_StatusText());
+
+    handler->PSendSysMessage("Dispatcher: {} workers, {} queued, {} in flight, {} awaiting delivery",
+                             dispatch.workers, dispatch.queuedRequests,
+                             dispatch.inFlight, dispatch.pendingDeliveries);
+    handler->PSendSysMessage("Totals: {} submitted, {} delivered, {} failed",
+                             (unsigned long long)dispatch.totalSubmitted,
+                             (unsigned long long)dispatch.totalDelivered,
+                             (unsigned long long)dispatch.totalFailed);
+    handler->PSendSysMessage("Dropped: {} queue-full, {} empty-after-cleanup, {} by governor",
+                             (unsigned long long)dispatch.totalDroppedQueueFull,
+                             (unsigned long long)dispatch.totalDroppedEmpty,
+                             (unsigned long long)dispatch.totalDroppedGovernor);
+
+    handler->PSendSysMessage("Governor: {} bots, {} scopes tracked, {} sends in the last minute",
+                             gov.trackedBots, gov.trackedScopes, gov.sendsLastMinute);
+    handler->PSendSysMessage("Blocked: {} cooldown, {} rate, {} repetition, {} chain-depth, {} no-audience",
+                             gov.blockedCooldown, gov.blockedRate, gov.blockedRepetition,
+                             gov.blockedChainDepth, gov.blockedNoAudience);
+
+    handler->PSendSysMessage("Roleplay: {} (strictness {})   Emote reactions: {}",
+                             g_RoleplayEnable ? "on" : "off",
+                             (uint32)g_RoleplayStrictness,
+                             g_EnableEmoteReactions ? "on" : "off");
+    handler->PSendSysMessage("Topic weights: people {} / world {} / activity {} / self {} / guild {}",
+                             g_TopicWeightPeople, g_TopicWeightWorld, g_TopicWeightActivity,
+                             g_TopicWeightSelf, g_TopicWeightGuild);
+
+    if (!dispatch.lastError.empty())
+        handler->PSendSysMessage("|cffff0000Last error:|r {}", dispatch.lastError);
+    else
+        handler->PSendSysMessage("Last error: none");
+
+    return true;
+}
+
+bool OllamaChatConfigCommand::HandleOllamaTestCommand(ChatHandler* handler, Acore::ChatCommands::Tail prompt)
+{
+    std::string text(prompt);
+    if (text.empty())
+    {
+        handler->SendSysMessage("Usage: .ollama test <prompt>");
+        handler->SetSentErrorMessage(true);
+        return false;
+    }
+
+    handler->PSendSysMessage("[Ollama Chat] Sending test prompt, please wait...");
+
+    // Blocking HTTP must not run on the world thread, so do the round trip on
+    // a scratch thread and report from there. Turns "the bots are quiet" into
+    // a one-command diagnosis: you see the raw output and the cleaned output
+    // side by side.
+    std::thread([text]()
+    {
+        OllamaApiResult api = QueryOllama(text, OllamaRequestKind::ChatReply);
+
+        if (!api.ok)
+        {
+            LOG_INFO("module.ollamachat", "[Ollama Chat] TEST FAILED after {}ms: {}",
+                     api.latencyMs, api.error.empty() ? "unknown error" : api.error);
+            return;
+        }
+
+        uint32_t emote = 0;
+        const std::string cleaned = ProcessLlmResponse(api.text, "Tester", &emote);
+
+        LOG_INFO("module.ollamachat", "[Ollama Chat] TEST ok in {}ms (think={}).",
+                 api.latencyMs, api.thinkUsed ? "yes" : "no");
+        LOG_INFO("module.ollamachat", "[Ollama Chat] TEST raw     : {}", api.text);
+        LOG_INFO("module.ollamachat", "[Ollama Chat] TEST cleaned : {}", cleaned);
+        if (emote)
+            LOG_INFO("module.ollamachat", "[Ollama Chat] TEST emote   : {}", emote);
+        if (!api.thinking.empty())
+            LOG_INFO("module.ollamachat", "[Ollama Chat] TEST thinking: {}", api.thinking);
+    }).detach();
+
+    handler->PSendSysMessage("[Ollama Chat] Result will appear in the server log (module.ollamachat).");
     return true;
 }

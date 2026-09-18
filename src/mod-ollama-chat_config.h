@@ -6,6 +6,8 @@
 #include <vector>
 #include <deque>
 #include <unordered_map>
+#include <set>
+#include <utility>
 #include <mutex>
 #include <ctime>
 #include "ScriptMgr.h"  // Ensure WorldScript is defined
@@ -52,6 +54,13 @@ extern uint32_t    g_OllamaNumThreads;
 extern std::string g_OllamaStop;
 extern std::string g_OllamaSystemPrompt;
 extern std::string g_OllamaSeed;
+
+// Optional sampling controls for response diversity. All default to "unset",
+// in which case the field is not sent at all and the model's default applies.
+extern int32_t     g_OllamaTopK;              // -1 = unset
+extern float       g_OllamaMinP;              // -1 = unset
+extern float       g_OllamaPresencePenalty;   // <= -999 = unset
+extern float       g_OllamaFrequencyPenalty;  // <= -999 = unset
 
 // --------------------------------------------
 // Concurrency/Queueing
@@ -118,7 +127,19 @@ extern std::string g_ChatBotSnapshotTemplate;
 // --------------------------------------------
 // Conversation History Store and Mutex
 // --------------------------------------------
-extern std::unordered_map<uint64_t, std::unordered_map<uint64_t, std::deque<std::pair<std::string, std::string>>>> g_BotConversationHistory;
+// One turn of a bot/player conversation.
+//
+// `persisted` is what keeps SaveBotConversationHistoryToDB() from rewriting
+// the whole window every save interval. It is set once the row has been handed
+// to the database, and is false for anything appended since the last save.
+struct BotConversationEntry
+{
+    std::string playerMessage;
+    std::string botReply;
+    bool        persisted = false;
+};
+
+extern std::unordered_map<uint64_t, std::unordered_map<uint64_t, std::deque<BotConversationEntry>>> g_BotConversationHistory;
 extern std::mutex   g_ConversationHistoryMutex;
 extern time_t       g_LastHistorySaveTime;
 
@@ -128,9 +149,156 @@ extern time_t       g_LastHistorySaveTime;
 extern std::vector<std::string> g_BlacklistCommands;
 
 // --------------------------------------------
-// Think Mode Support
+// Think Mode (see mod-ollama-chat_capability.h)
 // --------------------------------------------
-extern bool g_ThinkModeEnableForModule;
+extern bool     g_ThinkModeEnableForModule;   // deprecated; maps onto ThinkMode
+extern uint8_t  g_ThinkModePolicy;            // OllamaThinkPolicy
+extern uint32_t g_ThinkMaxLatencyMs;
+// Extra num_predict headroom granted when reasoning tokens are expected --
+// either because think mode is on, or because the model reasons whether or not
+// it is asked to. Without it a small NumPredict is spent on reasoning and the
+// reply comes back empty. 0 disables the headroom entirely.
+extern uint32_t g_ReasoningTokenReserve;
+extern uint32_t g_CapabilityProbeTimeoutSeconds;
+
+// --------------------------------------------
+// HTTP / dispatcher
+// --------------------------------------------
+extern uint32_t g_HttpTimeoutSeconds;
+extern uint32_t g_DispatchWorkerThreads;
+extern uint32_t g_MaxQueueDepth;
+
+// --------------------------------------------
+// Response post-processing
+// --------------------------------------------
+extern uint32_t g_MaxReplyLength;
+extern bool     g_ResponseStripMarkdown;
+extern bool     g_ResponseStripDecorativeUnicode;
+
+// --------------------------------------------
+// Conversation governor
+// --------------------------------------------
+extern uint8_t  g_MaxChainDepth;
+extern uint32_t g_ChainChanceDecayPct;
+extern bool     g_RequireRecentHuman;
+extern uint32_t g_HumanWindowSeconds;
+extern uint32_t g_BotCooldownSeconds;
+extern uint32_t g_ScopeCooldownSeconds;
+// Party/raid groups at or below this many members count as direct address,
+// so a bot answering a person in them is not held back by the ambient
+// pacing cooldowns. 0 disables the group case entirely.
+extern uint32_t g_DirectAddressGroupSize;
+// How long after a bot answers someone that person keeps its attention in
+// that scope. 0 disables the open-conversation rule.
+extern uint32_t g_ConversationWindowSeconds;
+// Reply chance used instead of the ambient per-channel chance when the line
+// is aimed at this bot.
+extern uint32_t g_DirectAddressReplyChance;
+extern uint32_t g_ScopeMessagesPerMinute;
+extern uint32_t g_GlobalMessagesPerMinute;
+extern uint32_t g_BotHistorySize;
+extern uint32_t g_ScopeHistorySize;
+extern float    g_RepetitionSimilarityThreshold;
+extern uint32_t g_RepetitionWindowSeconds;
+extern uint32_t g_OpenerHistorySize;
+
+// --------------------------------------------
+// Topic engine
+// --------------------------------------------
+extern uint32_t g_TopicWeightPeople;
+extern uint32_t g_TopicWeightWorld;
+extern uint32_t g_TopicWeightActivity;
+extern uint32_t g_TopicWeightSelf;
+extern uint32_t g_TopicWeightGuild;
+extern uint32_t g_TopicMemoryCount;
+extern uint32_t g_TopicEventMemorySize;
+extern uint32_t g_TopicEventMemorySeconds;
+extern float    g_TopicPlayerRadius;
+extern uint32_t g_RandomChatterQuestionChance;
+
+extern std::vector<std::string> g_EnvCommentNearbyPlayer;
+extern std::vector<std::string> g_EnvCommentGroupMember;
+extern std::vector<std::string> g_EnvCommentGuildMemberOnline;
+extern std::vector<std::string> g_EnvCommentRecentEvent;
+extern std::vector<std::string> g_EnvCommentNamedNpc;
+extern std::vector<std::string> g_EnvCommentZoneLandmark;
+extern std::vector<std::string> g_EnvCommentTimeOfDay;
+extern std::vector<std::string> g_EnvCommentCorpse;
+extern std::vector<std::string> g_EnvCommentDanger;
+extern std::vector<std::string> g_EnvCommentQuestObjective;
+extern std::vector<std::string> g_EnvCommentGroupNeed;
+
+// --------------------------------------------
+// Game-state snapshot limits
+// --------------------------------------------
+extern bool     g_SnapshotIncludeSpells;
+extern uint32_t g_SnapshotMaxSpells;
+extern uint32_t g_SnapshotMaxCreatures;
+extern uint32_t g_SnapshotMaxObjects;
+extern uint32_t g_SnapshotMaxPlayers;
+
+// --------------------------------------------
+// Roleplay mode
+// --------------------------------------------
+extern bool        g_RoleplayEnable;
+extern uint8_t     g_RoleplayStrictness;
+extern bool        g_RoleplayUseRaceVoice;
+extern bool        g_RoleplayUseClassVoice;
+extern bool        g_RoleplayFactionAttitude;
+extern bool        g_RoleplayBlockMetaTerms;
+extern std::string g_RoleplayMetaTermList;
+extern bool        g_RoleplayCrossFactionGibberish;
+extern std::vector<std::string> g_RoleplayPromptVariations;
+extern std::vector<std::string> g_RoleplayQuestionVariations;
+
+// --------------------------------------------
+// How long a looping emote state (dance) is allowed to run before the module
+// clears it. Nothing else clears it for a bot: the core only does so on a
+// movement packet from a real client. 0 leaves it set forever.
+extern uint32_t g_StateEmoteDurationMs;
+
+// Percent chance (0-100) that a reply's prompt invites a gesture at all.
+// Offering it on every line makes bots gesture almost constantly. 0 = never.
+extern int      g_GestureChance;
+
+// TEXT_EMOTE_* to play when the model supplies a gesture name the table does
+// not know. Resolved from its config name on the world thread at load, because
+// ExtractEmoteTag runs on a worker and must not read a config string. 0 = none.
+extern uint32_t g_EmoteFallbackId;
+
+// Embodiment: facing, gestures, emote reactions
+// --------------------------------------------
+extern bool     g_EnableBotFacing;
+extern bool     g_EnableBotEmotes;
+extern uint32_t g_BotExpressionDelayMs;
+extern float    g_BotFacingMaxDistance;
+extern bool     g_EnableEmoteReactions;
+extern uint32_t g_EmoteReplyChance;
+extern uint32_t g_EmoteReplyMirrorWeight;
+extern uint32_t g_EmoteReplyCounterWeight;
+extern uint32_t g_EmoteReplySpeakWeight;
+extern uint32_t g_EmoteReactionCooldownSeconds;
+extern std::string g_EmoteReactionPromptTemplate;
+
+// --------------------------------------------
+// Long-term memory and relationships
+// --------------------------------------------
+extern bool        g_MemoryEnable;
+extern uint32_t    g_MemoryHistoryTokenLimit;   // condense once history exceeds this
+extern uint32_t    g_MemoryPromptTokenBudget;   // how much of the prompt memories may use
+extern uint32_t    g_MemoryMaxPerBot;
+extern uint32_t    g_MemorySaveInterval;        // minutes
+extern std::string g_MemoryCondensePrompt;
+extern std::string g_MemoryPromptTemplate;
+
+extern bool        g_RelationshipEnable;
+extern uint32_t    g_RelationshipMentionThreshold;
+extern uint32_t    g_RelationshipMaxPerPrompt;
+extern uint32_t    g_RelationshipMaxLength;
+extern std::string g_RelationshipUpdatePrompt;
+extern std::string g_RelationshipPromptTemplate;
+
+extern time_t      g_LastMemorySaveTime;
 
 // --------------------------------------------
 // Environment/Contextual Random Chatter Templates
@@ -226,6 +394,9 @@ extern std::string g_SentimentPromptTemplate;            // Template for includi
 
 // In-memory sentiment storage and mutex
 extern std::unordered_map<uint64_t, std::unordered_map<uint64_t, float>> g_BotPlayerSentiments;
+// (bot_guid, player_guid) pairs changed since the last save. Only these are
+// written; the map as a whole is not re-REPLACE INTO'd every interval.
+extern std::set<std::pair<uint64_t, uint64_t>> g_DirtySentiments;
 extern std::mutex g_SentimentMutex;
 extern time_t g_LastSentimentSaveTime;
 
@@ -271,12 +442,19 @@ extern bool g_DisableForSayYell;
 extern bool g_DisableForGuild;
 extern bool g_DisableForParty;
 
+// Which numbered channels ambient chatter may use.
+extern bool g_ChatterUseGeneralChannel;
+extern bool g_ChatterUseTradeChannel;
+extern bool g_ChatterUseLfgChannel;
+extern bool g_ChatterUseGuildRecruitmentChannel;
+
 // --------------------------------------------
 // Typing Simulation Settings
 // --------------------------------------------
 extern bool g_EnableTypingSimulation;
 extern uint32_t g_TypingSimulationBaseDelay;      // Base delay in milliseconds
 extern uint32_t g_TypingSimulationDelayPerChar;   // Delay per character in milliseconds
+extern uint32_t g_TypingSimulationMaxDelay;       // Ceiling, so a long reply is not lost
 
 // --------------------------------------------
 // Loader Functions

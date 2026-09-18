@@ -46,7 +46,13 @@ OllamaChat.Model = llama3.2:1b
 # OllamaChat.NumPredict
 #     Description: Maximum number of tokens to generate in Ollama responses.
 #     0 = unlimited. Only set if you want a hard cap.
-#     Default: 40
+#     Default: 100
+#
+#     IMPORTANT: this cap covers reasoning AND the reply. On a reasoning model
+#     (gpt-oss, deepseek-r1, qwen3 thinking builds) the reasoning is emitted
+#     first, so a low cap is spent before the reply starts and the bot returns
+#     nothing. Those models reason even with think mode off -- "think": false
+#     is a request, not a guarantee. See OllamaChat.ReasoningTokenReserve.
 #
 #     | NumPredict | Approx. Words | Use Case                         |
 #     |:----------:|:-------------:|:---------------------------------|
@@ -57,6 +63,22 @@ OllamaChat.Model = llama3.2:1b
 #     |     75     |   ~50–60      | Long quest/lore text             |
 #     |    100+    |   70–80+      | Multi-paragraph (not typical)    |
 OllamaChat.NumPredict = 100
+
+# OllamaChat.ReasoningTokenReserve
+#     Description: Extra num_predict headroom added when reasoning tokens are
+#                  expected -- either because think mode is on, or because the
+#                  model has been observed reasoning with think mode off.
+#
+#                  The module detects the second case on its own: an HTTP 200
+#                  carrying reasoning but an empty reply means the budget was
+#                  spent thinking. It retries that request with the reserve and
+#                  applies it to every later request for that model, so you
+#                  only lose the one reply while it works this out.
+#
+#                  Has no effect when NumPredict = 0 (already unlimited).
+#                  Set to 0 to disable the headroom and the retry.
+#     Default:     512
+OllamaChat.ReasoningTokenReserve = 512
 
 # OllamaChat.Temperature
 #     Description: Controls the "creativity" or randomness of the model’s output.
@@ -135,7 +157,7 @@ OllamaChat.MaxConcurrentQueries = 0
 #                  Make sure you set OllamaChat.NumPredict = 0 (unlimited) when using Think Mode.
 #                  Certain models that require Think Mode must have this enabled to function properly.
 #     Default:     0 (false)
-OllamaChat.ThinkModeEnableForModule = 0
+# (moved: see the THINK MODE section at the end of this file)
 
 # --------------------------------------------
 # GENERAL CHATTER / RESPONSE LOGIC
@@ -186,6 +208,17 @@ OllamaChat.BotReplyChance.Guild = 5
 #                  When set to 0 (false), bots will not reply to any whispers.
 #                  When set to 1 (true), bots will reply to whispers based on normal reply chances.
 #     Default:     0 (false)
+#
+#        A whisper is direct address, so when this is on the bot ALWAYS
+#        answers. It is not subject to PlayerReplyChance.* (it used to borrow
+#        PlayerReplyChance.Say, so lowering that randomly swallowed whispers
+#        and setting it to 0 silenced them entirely), and it is not held back
+#        by BotCooldownSeconds, ScopeCooldownSeconds, ScopeMessagesPerMinute or
+#        the repetition filter -- those pace ambient chatter and have no
+#        business silencing an answer to a direct question.
+#
+#        GlobalMessagesPerMinute still applies: that one protects the LLM
+#        backend rather than pacing the bots.
 OllamaChat.EnableWhisperReplies = 0
 
 # OllamaChat.MaxBotsToPick
@@ -278,7 +311,7 @@ OllamaChat.RandomChatterMaxBotsPerPlayer = 2
 #   Description: The template string for random bot chatter prompts.
 #   Placeholders (named): {bot_name} {bot_level} {bot_class} {bot_race} {bot_gender} {bot_role} {bot_faction} {bot_area} {bot_zone} {bot_map} {bot_personality} {bot_personality_name} {environment_info}
 #   Note: {bot_personality_name} contains the name/key of the personality (e.g., "grumpy", "helpful"), while {bot_personality} contains the full personality description text.
-OllamaChat.RandomChatterPromptTemplate = "You are a Wrath-era WoW player. Name: {bot_name}, Level: {bot_level} {bot_class}, {bot_race} {bot_gender}, Spec: {bot_role}, Faction: {bot_faction}. Location: {bot_area}, Zone: {bot_zone}, Map: {bot_map}. MAKE SURE YOU RESPOND USING YOUR PERSONALITY, WHICH IS: {bot_personality_name}: {bot_personality}. {environment_info} Reply casually in under 15 words. No quotes, markdown, symbols, or emojis. Use real WoW slang. Avoid uncommon jargon or formatting."
+OllamaChat.RandomChatterPromptTemplate = "You are a World of Warcraft player. Name: {bot_name}, Level: {bot_level} {bot_class}, {bot_race} {bot_gender}, Spec: {bot_role}, Faction: {bot_faction}. Location: {bot_area}, Zone: {bot_zone}, Map: {bot_map}. MAKE SURE YOU RESPOND USING YOUR PERSONALITY, WHICH IS: {bot_personality_name}: {bot_personality}. {environment_info} Reply casually in under 15 words. No quotes, markdown, symbols, or emojis. Use real WoW slang. Avoid uncommon jargon or formatting."
 
 # OllamaChat.RandomChatterPromptVariations
 #   Description: Pipe-separated (|) list of additional prompt instructions that will be randomly selected and appended to the RandomChatterPromptTemplate.
@@ -298,7 +331,7 @@ OllamaChat.RandomChatterPromptVariations = "Complain about something typical WoW
 #                Leave empty to disable question variations and only use statement variations.
 #   Example:     "Ask about dungeon preferences.|Ask if anyone wants to PvP.|Ask about raid progression."
 #   Default:     (see below for engaging Wrath-era question prompts designed to stimulate bot-to-bot and player-to-bot conversations)
-OllamaChat.RandomChatterQuestionVariations = "Ask if others think this zone is difficult.|Ask about favorite dungeons.|Ask about Icecrown Citadel progression.|Ask about daily quest frustrations.|Ask about Naxxramas difficulty compared to original.|Ask what spec people are running.|Ask about Death Knight popularity.|Ask about upcoming Death Knight nerfs.|Ask about gold-making strategies in Wrath.|Ask if anyone is farming badges.|Ask about excitement for Ulduar.|Ask if dual spec was worth the cost.|Ask about opinions on the old talent trees.|Ask about favorite raid bosses.|Ask if flying mounts ruined world PvP.|Ask who's doing arena this season.|Ask about arena ratings.|Ask about Wintergrasp balance.|Ask about Oculus dungeon opinions.|Ask which professions make the most gold.|Ask about old-world flying possibilities.|Ask about reputation mount farming.|Ask which heroic dungeon is hardest.|Ask if emblems are too easy to get."
+OllamaChat.RandomChatterQuestionVariations = "Ask if others think this zone is difficult.|Ask about favorite dungeons.|Ask about Icecrown Citadel progression.|Ask about daily quest frustrations.|Ask about Naxxramas difficulty compared to original.|Ask what spec people are running.|Ask about Death Knight popularity.|Ask about upcoming Death Knight nerfs.|Ask about gold-making strategies in WoW.|Ask if anyone is farming badges.|Ask about excitement for Ulduar.|Ask if dual spec was worth the cost.|Ask about opinions on the old talent trees.|Ask about favorite raid bosses.|Ask if flying mounts ruined world PvP.|Ask who's doing arena this season.|Ask about arena ratings.|Ask about Wintergrasp balance.|Ask about Oculus dungeon opinions.|Ask which professions make the most gold.|Ask about old-world flying possibilities.|Ask about reputation mount farming.|Ask which heroic dungeon is hardest.|Ask if emblems are too easy to get."
 
 # --------------------------------------------
 # EVENT CHATTER SYSTEM
@@ -379,7 +412,7 @@ OllamaChat.EnableRPPersonalities = 0
 # OllamaChat.DefaultPersonalityPrompt
 #     Description: The fallback personality description used when a bot has no specific roleplay type assigned.
 #     Default:     Talk like a standard WoW player.
-OllamaChat.DefaultPersonalityPrompt = "Speak like a real WoW player from Wrath. Stay in character and use casual in-game tone."
+OllamaChat.DefaultPersonalityPrompt = "Speak like a real WoW player. Stay in character and use casual in-game tone."
 
 # --------------------------------------------
 # CONVERSATION HISTORY AND SNAPSHOT SYSTEM
@@ -399,6 +432,11 @@ OllamaChat.MaxConversationHistory = 5
 # OllamaChat.ConversationHistorySaveInterval
 #     Description: The interval (in minutes) between periodic saves of conversation history from memory to the database.
 #                  Set to 0 to disable auto-saving.
+#
+#                  Only turns added since the last save are written, and only
+#                  the bot/player pairs that gained a turn are trimmed back to
+#                  MaxConversationHistory. A quiet server writes nothing, so
+#                  lowering this costs far less than the interval suggests.
 #     Default:     10
 OllamaChat.ConversationHistorySaveInterval = 10
 
@@ -453,6 +491,7 @@ OllamaChat.SentimentAdjustmentStrength = 0.05
 
 # How often to save sentiment data to database (in minutes)
 # Set to 0 to disable periodic saving
+# Only bot/player pairs whose sentiment actually moved are written.
 # Default: 10
 OllamaChat.SentimentSaveInterval = 10
 
@@ -474,7 +513,7 @@ OllamaChat.SentimentPromptTemplate = "Your relationship sentiment with {player_n
 #   Description: The main template for bot chat prompts sent to the LLM.
 #   Placeholders (named): {bot_name} {bot_level} {bot_class} {bot_personality} {bot_personality_name} {player_level} {player_class} {player_name} {player_message} {extra_info} {sentiment_info}
 #   Note: {bot_personality_name} contains the name/key of the personality (e.g., "grumpy", "helpful"), while {bot_personality} contains the full personality description text.
-OllamaChat.ChatPromptTemplate = "You're a Wrath-era WoW player familiar with Vanilla and TBC. Name: {bot_name}, Level: {bot_level} {bot_class}, MAKE SURE YOU RESPOND USING YOUR PERSONALITY, WHICH IS: {bot_personality_name}: {bot_personality}. {sentiment_info} {chat_history} A level {player_level} {player_class} named {player_name} said: '{player_message}'. {extra_info} Reply naturally in under 15 words. Use authentic WoW tone. Be blunt if provoked. Be precise if giving directions. Never contradict your class, race, or location. Never act like a narrator—just respond like a player."
+OllamaChat.ChatPromptTemplate = "You're a WoW player familiar with 3.3.5 version of the game and before. Name: {bot_name}, Level: {bot_level} {bot_class}, MAKE SURE YOU RESPOND USING YOUR PERSONALITY, WHICH IS: {bot_personality_name}: {bot_personality}. {sentiment_info} {chat_history} A level {player_level} {player_class} named {player_name} said: '{player_message}'. {extra_info} Reply naturally in under 15 words. Use authentic WoW tone. Be blunt if provoked. Be precise if giving directions. Never contradict your class, race, or location. Never act like a narrator—just respond like a player."
 
 # OllamaChat.ChatExtraInfoTemplate
 #   Description: The context/details string about the bot and player, injected into the chat prompt as the last parameter.
@@ -904,3 +943,929 @@ OllamaChat.RAGSimilarityThreshold = 0.3
 #     Description: Template for including RAG information in bot prompts.
 #     Placeholders (named): {rag_info}
 OllamaChat.RAGPromptTemplate = "RELEVANT INFORMATION:\n{rag_info}\nUse this information to provide accurate and detailed responses when applicable."
+###############################################################################
+#
+#   OLLAMA CHAT - THINK MODE
+#
+###############################################################################
+
+#    OllamaChat.ThinkMode
+#        auto / on / off.
+#
+#        auto (default) is capability-gated AND task-gated. On startup the
+#        module asks Ollama what the configured model can do (POST /api/show,
+#        falling back to a live one-token probe on older Ollama). It only ever
+#        sends "think" to a model that reports the capability, so a model that
+#        cannot think is never asked to -- that request used to come back as
+#        HTTP 400 and silence every bot on the server with nothing useful in
+#        the log.
+#
+#        Under auto, reasoning is spent only where it changes the answer:
+#            chat replies / random chatter / event chatter -> off
+#              (short, latency-sensitive, nothing to reason about)
+#            sentiment analysis                            -> on
+#              (a judgement call, and never shown to players)
+#            roleplay replies at Strictness 2              -> on
+#
+#        on  = always think, when the model supports it.
+#        off = never think.
+#
+#        Everything below is detected at runtime and applied on the fly. You do
+#        not need to restart, or reconfigure, after swapping models:
+#
+#          * A request rejected for asking to think -> think is switched off
+#            for that model, logged once, and the request is retried without it.
+#
+#          * "think": false is a request, not a guarantee. gpt-oss and other
+#            harmony-format builds reason regardless, and Ollama charges those
+#            tokens to num_predict -- so a low cap is spent reasoning and the
+#            reply comes back empty. The module recognises that shape (HTTP 200,
+#            reasoning present, answer empty) and from then on:
+#                - sends "think": "low" instead of false for this model, which
+#                  is the closest to off such a model offers, and
+#                - adds ReasoningTokenReserve to num_predict.
+#            The request that triggered the detection is retried, so at most
+#            one reply is lost while the module works this out.
+#
+#          * If Ollama refuses the string level, the module falls back to the
+#            boolean form permanently for that model and logs it once.
+#
+#        ".ollama status" reports whatever has been detected so far.
+#        Default: auto
+OllamaChat.ThinkMode = "auto"
+
+#    OllamaChat.ThinkModeEnableForModule
+#        DEPRECATED. Kept so old configs keep working: when this is 1 and
+#        ThinkMode is left at "auto", think mode is forced on.
+#        Prefer OllamaChat.ThinkMode.
+#        Default: 0
+OllamaChat.ThinkModeEnableForModule = 0
+
+#    OllamaChat.ThinkMaxLatencyMs
+#        Latency guard for auto mode. If think-enabled requests average slower
+#        than this, think is disabled for the rest of the session and the
+#        reason is logged. A server that swaps to a slow model degrades to fast
+#        replies instead of to a dead chat channel. 0 disables the guard.
+#        Default: 12000
+OllamaChat.ThinkMaxLatencyMs = 12000
+
+#    OllamaChat.CapabilityProbeTimeoutSeconds
+#        Timeout for the startup capability probe only. Kept short so a missing
+#        Ollama does not leave the module undecided for two minutes.
+#        Default: 10
+OllamaChat.CapabilityProbeTimeoutSeconds = 10
+
+###############################################################################
+#
+#   OLLAMA CHAT - DISPATCHER AND HTTP
+#
+###############################################################################
+
+#    OllamaChat.WorkerThreads
+#        Size of the pool that performs LLM calls. This replaces the old
+#        behaviour of spawning one detached thread per bot per message, which
+#        was unbounded. Workers do HTTP and string work only; every reply is
+#        delivered on the world thread.
+#        Defaults to MaxConcurrentQueries when that is set, otherwise 4.
+OllamaChat.WorkerThreads = 4
+
+#    OllamaChat.MaxQueueDepth
+#        Requests waiting for a worker. Beyond this, new requests are dropped
+#        rather than queued, so a slow Ollama sheds load instead of building an
+#        ever-growing backlog of stale replies. 0 = unlimited (not advised).
+#        Default: 64
+OllamaChat.MaxQueueDepth = 64
+
+#    OllamaChat.HttpTimeoutSeconds
+#        Connection/read/write timeout for LLM calls.
+#        Default: 120
+OllamaChat.HttpTimeoutSeconds = 120
+
+#    OllamaChat.TypingSimulationMaxDelay
+#        Ceiling on the simulated typing delay, in milliseconds. Without a cap
+#        a long reply could be held back for a very long time.
+#        Default: 8000
+OllamaChat.TypingSimulationMaxDelay = 8000
+
+###############################################################################
+#
+#   OLLAMA CHAT - RESPONSE CLEANUP
+#
+###############################################################################
+
+#    OllamaChat.MaxReplyLength
+#        Maximum reply length in bytes. WoW chat is limited to 255; the reply
+#        is cut at the last sentence end if one is near, otherwise at a word
+#        boundary, never mid-word and never mid-UTF-8-sequence.
+#        Default: 240
+OllamaChat.MaxReplyLength = 240
+
+#    OllamaChat.StripMarkdown
+#        Remove markdown emphasis, bullets, headings and code fences from
+#        replies. Models emit these regardless of what the prompt asks for.
+#        Default: 1
+OllamaChat.StripMarkdown = 1
+
+#    OllamaChat.StripDecorativeUnicode
+#        Fold smart quotes and dashes to ASCII, then drop emoji and symbols the
+#        3.3.5 client renders as boxes. Accented Latin characters are kept.
+#        Default: 1
+OllamaChat.StripDecorativeUnicode = 1
+
+###############################################################################
+#
+#   OLLAMA CHAT - CONVERSATION GOVERNOR
+#
+#   Four independent brakes, because bot chat runs away in four different ways.
+#   If bots are talking endlessly among themselves, these are the settings to
+#   reach for -- in particular RequireRecentHuman, which does most of the work.
+#
+###############################################################################
+
+#    OllamaChat.BotConversation.MaxChainDepth
+#        How many bot-replies-to-bot hops a conversation may run before it is
+#        cut. A message from a real player is depth 0.
+#        Default: 3
+OllamaChat.BotConversation.MaxChainDepth = 3
+
+#    OllamaChat.BotConversation.ChanceDecayPct
+#        Reply chance multiplier applied at each hop, as a percentage. At 50, a
+#        20% base chance becomes 10% at depth 1 and 5% at depth 2, so chains
+#        run out of energy on their own well before the hard ceiling.
+#        Default: 50
+OllamaChat.BotConversation.ChanceDecayPct = 50
+
+#    OllamaChat.BotConversation.RequireRecentHuman
+#        Bots may only reply to OTHER BOTS while a real player has spoken in
+#        that same channel recently. Two bots alone in a guild at 4am fall
+#        silent; the same two bots talking around a player keep going.
+#        Default: 1
+OllamaChat.BotConversation.RequireRecentHuman = 1
+
+#    OllamaChat.BotConversation.HumanWindowSeconds
+#        How long a real player's message keeps bot-to-bot chat alive.
+#        Default: 120
+OllamaChat.BotConversation.HumanWindowSeconds = 120
+
+#    OllamaChat.Cooldown.PerBotSeconds
+#        Minimum gap between two lines from the same bot. This paces ambient
+#        chatter and is deliberately skipped for direct address -- see
+#        OllamaChat.Cooldown.DirectAddressGroupSize below.
+#        Default: 45
+OllamaChat.Cooldown.PerBotSeconds = 45
+
+#    OllamaChat.Cooldown.PerScopeSeconds
+#        Minimum gap between any two bot lines in the same channel.
+#        Default: 15
+OllamaChat.Cooldown.PerScopeSeconds = 15
+
+#    OllamaChat.Cooldown.DirectAddressGroupSize
+#        Party and raid chat from a real player counts as "direct address" when
+#        the group has this many members or fewer, which exempts the reply from
+#        the two pacing cooldowns above.
+#
+#        Those cooldowns exist to stop ambient chatter running hot. In a party
+#        they did the wrong thing: a bot answered the first thing said to it and
+#        then ignored the next 45 seconds of conversation, which looks like the
+#        bot is broken rather than like rate limiting working. A five-person
+#        party is a conversation; a 25-man raid is a crowd, so above this size
+#        pacing comes back.
+#
+#        Whispers and messages that name the bot are always direct address,
+#        whatever this is set to. Set to 0 to disable the group case and pace
+#        party chat like any other channel.
+#
+#        The global RateLimit.GlobalPerMinute ceiling still applies to direct
+#        address; that one protects the LLM backend, not the pacing.
+#        Default: 5
+OllamaChat.Cooldown.DirectAddressGroupSize = 5
+
+#    OllamaChat.Cooldown.ConversationWindowSeconds
+#        How long a bot stays "in conversation" with someone after answering
+#        them, per channel. While that window is open, everything that person
+#        says in that channel counts as direct address for that bot: it skips
+#        the pacing cooldowns and replies at DirectAddressReplyChance.
+#
+#        This is what keeps a conversation going. Without it a bot answers the
+#        first line, and then the follow-ups -- which usually do not repeat the
+#        bot name -- fall back to ambient pacing and it goes quiet again.
+#
+#        Only ever opened against a real player, never bot-to-bot; that would
+#        let two bots talk each other past every brake in the governor.
+#        Set to 0 to require a name mention on every single line.
+#        Default: 180
+OllamaChat.Cooldown.ConversationWindowSeconds = 180
+
+#    OllamaChat.DirectAddressReplyChance
+#        Reply chance used instead of the per-channel PlayerReplyChance when the
+#        line is aimed at this bot -- whispered, naming it, mid-conversation, or
+#        in a small party. Someone who has been talking to you does not go 50/50
+#        on whether to acknowledge your next sentence.
+#
+#        Never lowers a channel chance that is already higher. Set to 0 to turn
+#        the boost off and use the ambient per-channel chance everywhere; note
+#        that 0 also restores the old behaviour where a channel set to 0%
+#        ignores a bot being addressed by name.
+#        Default: 95
+OllamaChat.DirectAddressReplyChance = 95
+
+#    OllamaChat.RateLimit.ScopePerMinute
+#        Ceiling on bot messages per channel per minute. 0 = unlimited.
+#        Default: 8
+OllamaChat.RateLimit.ScopePerMinute = 8
+
+#    OllamaChat.RateLimit.GlobalPerMinute
+#        Server-wide ceiling on bot messages per minute. Also caps your LLM
+#        spend. 0 = unlimited.
+#        Default: 40
+OllamaChat.RateLimit.GlobalPerMinute = 40
+
+#    OllamaChat.Repetition.BotHistorySize
+#        How many of its own recent lines each bot remembers for comparison.
+#        Default: 12
+OllamaChat.Repetition.BotHistorySize = 12
+
+#    OllamaChat.Repetition.ScopeHistorySize
+#        How many recent lines each channel remembers, so two different bots do
+#        not say the same thing.
+#        Default: 30
+OllamaChat.Repetition.ScopeHistorySize = 30
+
+#    OllamaChat.Repetition.SimilarityThreshold
+#        0.0 - 1.0. A candidate reply scoring at or above this against recent
+#        history is discarded. Scoring is the higher of content-word Jaccard
+#        and character-trigram cosine. Lower = stricter.
+#        Default: 0.72
+OllamaChat.Repetition.SimilarityThreshold = 0.72
+
+#    OllamaChat.Repetition.WindowSeconds
+#        How long remembered lines stay eligible for comparison.
+#        Default: 1800
+OllamaChat.Repetition.WindowSeconds = 1800
+
+#    OllamaChat.Repetition.OpenerHistorySize
+#        Recent opening phrases (first three words) blocked per channel. This
+#        catches the "every bot starts with Aye," problem, which whole-line
+#        similarity scoring misses.
+#        Default: 8
+OllamaChat.Repetition.OpenerHistorySize = 8
+
+###############################################################################
+#
+#   OLLAMA CHAT - TOPIC ENGINE
+#
+#   What bots choose to talk about. The old pool was uniform over thirteen
+#   topics, seven of which were the bot's own inventory and spellbook, and none
+#   of which were the people standing next to it -- which is why bots sounded
+#   like they were reading a character sheet aloud.
+#
+#   Weights are relative, not percentages.
+#
+###############################################################################
+
+#    OllamaChat.Topic.WeightPeople
+#        Nearby players by name and what they are doing, group members,
+#        guildmates online, and things the bot just watched happen.
+#        Default: 30
+OllamaChat.Topic.WeightPeople = 30
+
+#    OllamaChat.Topic.WeightWorld
+#        The nearest INTERESTING creature (elite, rare, or a real level threat
+#        -- never a critter), named NPCs by role, landmarks, corpses, the time
+#        of day, and the instance the bot is in.
+#        Default: 30
+OllamaChat.Topic.WeightWorld = 30
+
+#    OllamaChat.Topic.WeightActivity
+#        Current quest objectives, danger assessment, and group needs
+#        (someone low on health, someone out of mana).
+#        Default: 25
+OllamaChat.Topic.WeightActivity = 25
+
+#    OllamaChat.Topic.WeightSelf
+#        The original inward-facing topics: spells, equipped items, bag space.
+#        Kept, but demoted. Raise this toward 100 to restore the old feel.
+#        Default: 15
+OllamaChat.Topic.WeightSelf = 15
+
+#    OllamaChat.Topic.WeightGuild
+#        Guild-flavoured topics, used only when the bot is in a guild with a
+#        real player online.
+#        Default: 20
+OllamaChat.Topic.WeightGuild = 20
+
+#    OllamaChat.Topic.MemoryCount
+#        How many recently used topics are suppressed per bot, so a bot does
+#        not talk about the same thing twice in a row.
+#        Default: 4
+OllamaChat.Topic.MemoryCount = 4
+
+#    OllamaChat.Topic.EventMemorySize
+#        How many witnessed events each bot remembers -- "Kaelan killed a Fjord
+#        Hawk", "Sereth was killed". This is what lets a bot comment on the
+#        fight you were both just in instead of reciting a fact about itself.
+#        0 disables witnessed-event memory.
+#        Default: 6
+OllamaChat.Topic.EventMemorySize = 6
+
+#    OllamaChat.Topic.EventMemorySeconds
+#        How long a witnessed event stays worth mentioning.
+#        Default: 300
+OllamaChat.Topic.EventMemorySeconds = 300
+
+#    OllamaChat.Topic.PlayerRadius
+#        How far a bot looks when picking a nearby player to talk about.
+#        Default: 40
+OllamaChat.Topic.PlayerRadius = 40
+
+#    OllamaChat.RandomChatterQuestionChance
+#        Percentage of ambient lines phrased as a question rather than a
+#        statement. The old code was a fixed 50/50.
+#        Default: 35
+OllamaChat.RandomChatterQuestionChance = 35
+
+###############################################################################
+#
+#   OLLAMA CHAT - GAME STATE SNAPSHOT LIMITS
+#
+###############################################################################
+
+#    OllamaChat.Snapshot.IncludeSpells
+#        Whether to list the bot's usable spells in the prompt.
+#
+#        This defaults to OFF now. The old code pasted EVERY non-passive,
+#        off-cooldown spell a bot knew into the prompt -- dozens of lines of
+#        the most concrete, most quotable text present -- which is the direct
+#        reason bots kept talking about their spellbook.
+#        Default: 0
+OllamaChat.Snapshot.IncludeSpells = 0
+
+#    OllamaChat.Snapshot.MaxSpells
+#        If spells are included, how many to list (randomly chosen, so it is
+#        not always the alphabetically-first ones).
+#        Default: 6
+OllamaChat.Snapshot.MaxSpells = 6
+
+#    OllamaChat.Snapshot.MaxCreatures
+#        Nearby creatures listed in the snapshot, nearest first. The snapshot
+#        now uses a grid search; it previously walked every creature spawn on
+#        the whole map on every prompt build.
+#        Default: 8
+OllamaChat.Snapshot.MaxCreatures = 8
+
+#    OllamaChat.Snapshot.MaxObjects
+#        Nearby gameobjects listed in the snapshot, nearest first.
+#        Default: 8
+OllamaChat.Snapshot.MaxObjects = 8
+
+#    OllamaChat.Snapshot.MaxPlayers
+#        Nearby players listed in the snapshot, nearest first. Resolved with a
+#        grid search rather than a walk of every character online.
+#        Default: 8
+OllamaChat.Snapshot.MaxPlayers = 8
+
+###############################################################################
+#
+#   OLLAMA CHAT - ROLEPLAY MODE
+#
+#   Race and class as a VOICE rather than as a stat line. Off by default.
+#
+###############################################################################
+
+#    OllamaChat.Roleplay.Enable
+#        Master switch for roleplay mode.
+#        Default: 0
+OllamaChat.Roleplay.Enable = 0
+
+#    OllamaChat.Roleplay.Strictness
+#        0 = Flavour only. Race and class voices colour the prompt; nothing
+#            else changes. A drop-in upgrade.
+#        1 = In character. Out-of-world vocabulary is filtered from replies and
+#            faction attitude is applied.
+#        2 = Hard in character. The roleplay chatter lists replace the shipped
+#            out-of-character ones, injuries and distances are described rather
+#            than quoted as figures, and think mode is used where supported.
+#        Default: 1
+OllamaChat.Roleplay.Strictness = 1
+
+#    OllamaChat.Roleplay.UseRaceVoice
+#        Give each race a speech register and cultural touchstones -- a Tauren
+#        speaks of the Earthmother and the balance, a Forsaken is dry and calls
+#        the living "breathers", a Gnome is fast and technical.
+#        Default: 1
+OllamaChat.Roleplay.UseRaceVoice = 1
+
+#    OllamaChat.Roleplay.UseClassVoice
+#        Give each class a worldview -- what that character NOTICES. A priest
+#        sees wounds, a hunter reads tracks and terrain, a rogue counts exits.
+#        Default: 1
+OllamaChat.Roleplay.UseClassVoice = 1
+
+#    OllamaChat.Roleplay.FactionAttitude
+#        Bots speak as loyal to their own faction and wary of the other.
+#        Default: 1
+OllamaChat.Roleplay.FactionAttitude = 1
+
+#    OllamaChat.Roleplay.BlockMetaTerms
+#        At Strictness >= 1, reject any reply containing out-of-world
+#        vocabulary. The line is dropped rather than mangled, so the bot stays
+#        silent instead of stepping out of character.
+#        Default: 1
+OllamaChat.Roleplay.BlockMetaTerms = 1
+
+#    OllamaChat.Roleplay.MetaTermList
+#        Pipe-separated, matched as whole words, case-insensitive.
+OllamaChat.Roleplay.MetaTermList = "dps|nerf|proc|patch|server|realm|respec|mmo|npc|toon|irl|lfg|afk|noob|meta|aggro|dot|hot|aoe|wipe|hitbox|hotfix|expansion"
+
+#    OllamaChat.Roleplay.CrossFactionGibberish
+#        Do not generate say/yell replies across factions. The client renders
+#        Orcish and Common as gibberish anyway, so a fluent cross-faction reply
+#        is the single most immersion-breaking thing the module can do --
+#        and skipping it saves the LLM round trip too.
+#        Default: 1
+OllamaChat.Roleplay.CrossFactionGibberish = 1
+
+#    OllamaChat.Roleplay.PromptVariations
+#    OllamaChat.Roleplay.QuestionVariations
+#        In-character replacements for RandomChatterPromptVariations and
+#        RandomChatterQuestionVariations, used at Strictness 2. The shipped
+#        lists push the other way ("Complain about nerfed abilities", "Ask if
+#        dual spec was worth the cost") -- that is player-forum talk, not
+#        in-world talk. Pipe-separated. Leave unset to use the built-in
+#        defaults, which are already in-world.
+# OllamaChat.Roleplay.PromptVariations = ""
+# OllamaChat.Roleplay.QuestionVariations = ""
+
+###############################################################################
+#
+#   OLLAMA CHAT - EMBODIMENT (FACING, GESTURES, EMOTE REACTIONS)
+#
+#   Makes a reply read as conversation rather than as a log line.
+#
+###############################################################################
+
+#    OllamaChat.EnableBotFacing
+#        Turn the bot to face whoever it is answering, just before the line
+#        lands. Skipped while the bot is moving, casting, in combat, mounted in
+#        flight, on a transport, or being teleported.
+#        Default: 1
+OllamaChat.EnableBotFacing = 1
+
+#    OllamaChat.Facing.MaxDistance
+#        Do not turn toward a target further away than this. 0 = no limit.
+#        Default: 40
+OllamaChat.Facing.MaxDistance = 40
+
+#    OllamaChat.EnableBotEmotes
+#        Let bots play a real text emote alongside a reply when the model
+#        supplies a gesture tag. The prompt asks for "[emote:wave]"; the parser
+#        also accepts "*waves*" and a bare "/wave", because models emit those
+#        unprompted. Unrecognised tags are stripped rather than spoken.
+#
+#        The emote is played through the same code path the client uses, so
+#        nearby players see the animation AND the "Bot waves at You." social
+#        text, with the correct per-race and per-gender emote variant.
+#        Default: 1
+OllamaChat.EnableBotEmotes = 1
+
+#    OllamaChat.GestureChance
+#        Percent chance (0-100) that a line's prompt invites a gesture at all.
+#
+#        Gestures are offered on replies, random chatter AND event chatter.
+#        Inviting one on every single line made bots gesture almost
+#        constantly, which reads as twitchy rather than alive -- and it spends
+#        prompt budget on a sentence most lines do not need. The model still
+#        decides whether a gesture fits when it is offered, so the real rate is
+#        lower than this number.
+#
+#        0 = never offer a gesture. Models sometimes emit "*waves*" unprompted
+#        anyway, and that is still parsed.
+#        Default: 40
+OllamaChat.GestureChance = 40
+
+#    OllamaChat.StateEmoteDurationMs
+#        How long a bot holds a posture or looping emote, in milliseconds.
+#
+#        Two emotes stick, for two different reasons:
+#
+#          /dance          sets UNIT_NPC_EMOTESTATE. The only thing that clears
+#                          it for a real player is the handler for a movement
+#                          packet from the client, and bots move server-side
+#                          through MotionMaster so they never send one. Without
+#                          this a mirrored /dance danced forever, and even
+#                          resumed after combat or a one-shot emote because the
+#                          field was still set underneath.
+#
+#          /sit /sleep     the core's text-emote handler broadcasts the social
+#          /kneel          line for these and then does nothing, so the bot
+#                          announced it was sitting down while standing there.
+#                          The module applies the posture the core leaves out,
+#                          which means it also has to take it back off.
+#
+#        The bot is only stood back up when it is still in the exact posture
+#        the emote put it in, so this never interrupts eating, drinking, or a
+#        sit its own AI chose afterwards.
+#
+#        0 disables both the posture change and the clear.
+#        Default: 15000
+OllamaChat.StateEmoteDurationMs = 15000
+
+#    OllamaChat.EmoteFallback
+#        Gesture to play when the model supplies an emote name that is not a
+#        real WoW emote. The prompt tells the model any common emote name
+#        works, and models reach for ones the game does not have ("grunt"), so
+#        those replies used to lose their gesture with nothing in the log.
+#
+#        Set to a name from the emote table, or leave empty for no fallback.
+#        Unresolved names are logged when DebugEnable is on, so you can see
+#        which ones your model favours and decide whether to care.
+#        Default: talk
+OllamaChat.EmoteFallback = "talk"
+
+#    OllamaChat.BotExpressionDelayMs
+#        Delay before the turn and gesture fire, in milliseconds. A small delay
+#        keeps it from looking instant and robotic.
+#        Default: 400
+OllamaChat.BotExpressionDelayMs = 400
+
+#    OllamaChat.EnableEmoteReactions
+#        Bots react when a real player emotes at them.
+#        Default: 1
+OllamaChat.EnableEmoteReactions = 1
+
+#    OllamaChat.EmoteReplyChance
+#        Percentage chance a bot reacts to an emote aimed at it.
+#        Default: 60
+OllamaChat.EmoteReplyChance = 60
+
+#    OllamaChat.EmoteReply.MirrorWeight
+#    OllamaChat.EmoteReply.CounterWeight
+#    OllamaChat.EmoteReply.SpeakWeight
+#        Relative weights for the three reaction styles:
+#            Mirror  - wave gets a wave, bow gets a bow. Free, no LLM call.
+#            Counter - flex gets a laugh, rude gets a glare. Also free.
+#            Speak   - answer in words, via the LLM.
+#        Defaults: 55 / 30 / 15
+OllamaChat.EmoteReply.MirrorWeight = 55
+OllamaChat.EmoteReply.CounterWeight = 30
+OllamaChat.EmoteReply.SpeakWeight = 15
+
+#    OllamaChat.EmoteReply.CooldownSeconds
+#        Debounce per (player, bot) pair, so /spam cannot flood the queue.
+#        Default: 20
+OllamaChat.EmoteReply.CooldownSeconds = 20
+
+#    OllamaChat.EmoteReactionPromptTemplate
+#        Prompt used when a bot answers an emote in words.
+#        Placeholders: {bot_name} {bot_level} {bot_class} {bot_race}
+#                      {bot_personality} {bot_personality_name}
+#                      {player_name} {player_class} {player_race} {emote_name}
+#        Leave unset to use the built-in default.
+# OllamaChat.EmoteReactionPromptTemplate = ""
+
+###############################################################################
+#
+#   OLLAMA CHAT - TOPIC COMMENT POOLS
+#
+#   Pipe-separated, exactly like the existing EnvComment* settings. All of
+#   these ship with built-in defaults, so leaving them unset is fine.
+#
+###############################################################################
+
+#    Nearby players. Placeholders: {player_name} {player_class} {player_race}
+#    {player_level} {player_state} {level_gap}
+#    {player_state} is one of: lying dead, fighting, mounted up, flying
+#    overhead, standing idle, sitting down, badly hurt, passing by.
+# OllamaChat.EnvCommentNearbyPlayer = ""
+
+#    Group members. Placeholders: {member_name} {member_class} {member_state}
+#    {member_level}
+# OllamaChat.EnvCommentGroupMember = ""
+
+#    Guildmates online. Placeholders: {member_name} {member_class} {member_level}
+# OllamaChat.EnvCommentGuildMemberOnline = ""
+
+#    Something the bot just witnessed. Placeholder: {event_text}
+# OllamaChat.EnvCommentRecentEvent = ""
+
+#    Named NPCs by role. Placeholders: {npc_name} {npc_role}
+#    {npc_role} is one of: innkeeper, merchant, quest giver, trainer.
+# OllamaChat.EnvCommentNamedNpc = ""
+
+#    Where they are. Placeholders: {area_name} {zone_name}
+# OllamaChat.EnvCommentZoneLandmark = ""
+
+#    Time of day. Placeholder: {time_of_day}
+# OllamaChat.EnvCommentTimeOfDay = ""
+
+#    A corpse nearby. Placeholders: {creature_name} {creature_level} {level_delta}
+# OllamaChat.EnvCommentCorpse = ""
+
+#    A dangerous creature. Placeholders: {creature_name} {level_delta}
+# OllamaChat.EnvCommentDanger = ""
+
+#    Current quest objective. Placeholders: {quest_name} {objective}
+# OllamaChat.EnvCommentQuestObjective = ""
+
+#    A group member needs something. Placeholders: {member_name} {need}
+# OllamaChat.EnvCommentGroupNeed = ""
+
+###############################################################################
+#
+#   OLLAMA CHAT - OPTIONAL SAMPLING CONTROLS
+#
+#   Extra knobs for response diversity and repetition. All are UNSET by
+#   default: when unset the field is not sent at all, so the model's own
+#   default applies and behaviour is unchanged unless you opt in.
+#
+#   These act inside a single generation. They do not replace the repetition
+#   controls under CONVERSATION GOVERNOR, which compare a candidate reply
+#   against what was actually said earlier — a model cannot see that.
+#
+###############################################################################
+
+#    OllamaChat.TopK
+#        Sample only from the K most likely tokens. Lower = more focused,
+#        higher = more varied. Typical range 20-100.
+#        -1 = unset (default)
+OllamaChat.TopK = -1
+
+#    OllamaChat.MinP
+#        Drop tokens below this fraction of the top token's probability. Often
+#        a better diversity control than TopK. Typical range 0.02-0.10.
+#        -1 = unset (default)
+OllamaChat.MinP = -1
+
+#    OllamaChat.PresencePenalty
+#        Penalises tokens that have appeared at all, pushing toward new
+#        subject matter. Typical range 0.0-1.0.
+#        Unset by default.
+# OllamaChat.PresencePenalty = 0.4
+
+#    OllamaChat.FrequencyPenalty
+#        Penalises tokens in proportion to how often they have appeared,
+#        which curbs verbatim repetition within a reply. Typical range 0.0-1.0.
+#        Unset by default.
+# OllamaChat.FrequencyPenalty = 0.4
+
+###############################################################################
+#
+#   OLLAMA CHAT - AMBIENT CHANNEL SELECTION
+#
+#   Which numbered channels ambient (random) chatter may speak in. Replies
+#   always follow whichever channel the player used and are not affected by
+#   these.
+#
+#   Channels are resolved by channel ID and zone, not by name — city channels
+#   such as "Trade - Stormwind City" and "GuildRecruitment - Stormwind City"
+#   now resolve correctly, including on localized realms.
+#
+#   Trade and GuildRecruitment only exist in cities, so enabling them simply
+#   has no effect while a bot is out in the world.
+#
+###############################################################################
+
+#    OllamaChat.Chatter.UseGeneralChannel
+#        Default: 1
+OllamaChat.Chatter.UseGeneralChannel = 1
+
+#    OllamaChat.Chatter.UseTradeChannel
+#        Default: 1
+OllamaChat.Chatter.UseTradeChannel = 1
+
+#    OllamaChat.Chatter.UseLookingForGroupChannel
+#        Realm-wide, so bot chatter here is visible to everyone. Off by
+#        default to avoid flooding it.
+#        Default: 0
+OllamaChat.Chatter.UseLookingForGroupChannel = 0
+
+#    OllamaChat.Chatter.UseGuildRecruitmentChannel
+#        Default: 0
+OllamaChat.Chatter.UseGuildRecruitmentChannel = 0
+
+###############################################################################
+#
+#   OLLAMA CHAT - LONG-TERM MEMORY AND RELATIONSHIPS
+#
+#   Conversation history is a sliding window: once a line falls out of it, the
+#   bot has no idea it ever happened. That is why bots otherwise feel like they
+#   meet you fresh every session no matter how much you have talked.
+#
+#   Two mechanisms fix that, both bounded so the prompt never grows without
+#   limit however long a character has been alive:
+#
+#     MEMORY         History accumulates until it crosses a token budget, at
+#                    which point the model condenses it into a few short
+#                    narrator-style notes with importance scores and the raw
+#                    history is cleared. The most important notes are then
+#                    selected into each prompt within a smaller budget.
+#
+#     RELATIONSHIPS  When a name comes up often enough in a bot's history, the
+#                    model writes (or revises) a sentence on how that bot feels
+#                    about that person. It goes into future prompts, so a bot's
+#                    attitude persists and evolves rather than resetting.
+#
+#   Both work in normal mode and roleplay mode. They complement the numeric
+#   sentiment score, which stays as-is — this is the qualitative half.
+#
+#   Requires the tables from
+#   data/sql/characters/base/2026_08_29_memory_relationships.sql
+#
+###############################################################################
+
+#    OllamaChat.Memory.Enable
+#        Master switch for long-term memory.
+#        Default: 1
+OllamaChat.Memory.Enable = 1
+
+#    OllamaChat.Memory.HistoryTokenLimit
+#        Condense once a bot's accumulated history exceeds roughly this many
+#        tokens. Lower = memories form sooner but from less material.
+#        0 disables condensation (history then just rolls off as before).
+#        Default: 1500
+OllamaChat.Memory.HistoryTokenLimit = 1500
+
+#    OllamaChat.Memory.PromptTokenBudget
+#        How much of each prompt remembered notes may occupy. This is the hard
+#        stop on prompt growth.
+#        Default: 400
+OllamaChat.Memory.PromptTokenBudget = 400
+
+#    OllamaChat.Memory.MaxPerBot
+#        Notes retained per character. When exceeded the least important are
+#        dropped.
+#        Default: 40
+OllamaChat.Memory.MaxPerBot = 40
+
+#    OllamaChat.Memory.SaveInterval
+#        Minutes between writes of memories and relationships to the database.
+#        Default: 10
+OllamaChat.Memory.SaveInterval = 10
+
+#    OllamaChat.Memory.CondensePrompt
+#        Prompt used to distil history into memories.
+#        Placeholders: {bot_name} {history}
+#        The model is asked for one note per line, prefixed "N | " where N is
+#        an importance from 1 to 10. Leave unset to use the built-in default.
+# OllamaChat.Memory.CondensePrompt = ""
+
+#    OllamaChat.Memory.PromptTemplate
+#        How remembered notes are introduced in the prompt.
+#        Placeholder: {memories}
+# OllamaChat.Memory.PromptTemplate = " Things you remember:\n{memories}"
+
+#    OllamaChat.Relationship.Enable
+#        Default: 1
+OllamaChat.Relationship.Enable = 1
+
+#    OllamaChat.Relationship.MentionThreshold
+#        How many times a name must come up before the character's view of that
+#        person is written or revised. Lower = relationships form faster and
+#        cost more LLM calls.
+#        Default: 8
+OllamaChat.Relationship.MentionThreshold = 8
+
+#    OllamaChat.Relationship.MaxPerPrompt
+#        How many relationships to include in a prompt. Whoever the bot is
+#        currently talking to is always listed first, so their own relationship
+#        never gets squeezed out.
+#        Default: 3
+OllamaChat.Relationship.MaxPerPrompt = 3
+
+#    OllamaChat.Relationship.MaxLength
+#        Maximum characters kept from the model's description.
+#        Default: 220
+OllamaChat.Relationship.MaxLength = 220
+
+#    OllamaChat.Relationship.UpdatePrompt
+#        Placeholders: {bot_name} {other_name} {existing} {history}
+# OllamaChat.Relationship.UpdatePrompt = ""
+
+#    OllamaChat.Relationship.PromptTemplate
+#        Placeholder: {relationships}
+# OllamaChat.Relationship.PromptTemplate = " How you feel about people you know:\n{relationships}"
+
+# --------------------------------------------
+# ENVIRONMENTAL/CONTEXTUAL TEMPLATES (continued)
+# --------------------------------------------
+#
+# These have working built-in defaults, but the core logs a "Missing
+# property" warning for every key it cannot find, so they are written out
+# here explicitly. The values below are the module’s own defaults.
+
+# OllamaChat.EnvCommentNearbyPlayer
+#   Description: A pipe-separated (|) list of template messages for when another player is seen nearby.
+#   Placeholders (named): {player_name} {player_race} {player_class} {player_level} {player_state}
+OllamaChat.EnvCommentNearbyPlayer = You notice {player_name}, a {player_race} {player_class}, {player_state} nearby. Say something to or about them.|{player_name} the {player_class} is {player_state} close by. React to seeing them.|A level {player_level} {player_class} called {player_name} is nearby. Comment on them.|You size up {player_name}, a {player_race} {player_class}. Say what you make of them.|{player_name} is {player_state} within earshot. Greet or remark on them.|You spot {player_name} and note they are {player_state}. Say something fitting.
+
+# OllamaChat.EnvCommentGroupMember
+#   Description: A pipe-separated (|) list of template messages for when a party or raid member is worth commenting on.
+#   Placeholders (named): {member_name} {member_class} {member_state}
+OllamaChat.EnvCommentGroupMember = Your companion {member_name} the {member_class} is {member_state}. Say something to them.|{member_name} is {member_state}. Comment on how your group is doing.|You glance at {member_name}, your {member_class}, and remark on the group's state.|Talk to {member_name} about what the group should do next.
+
+# OllamaChat.EnvCommentGuildMemberOnline
+#   Description: A pipe-separated (|) list of template messages for when a guildmate is online.
+#   Placeholders (named): {member_name} {member_class} {member_level}
+OllamaChat.EnvCommentGuildMemberOnline = Your guildmate {member_name} the {member_class} is online. Say something to the guild about them.|Greet {member_name} in guild chat, or ask what they are up to.|Mention {member_name}, level {member_level}, to the guild.
+
+# OllamaChat.EnvCommentRecentEvent
+#   Description: A pipe-separated (|) list of template messages for when the bot recalls something it just witnessed.
+#   Placeholders (named): {event_text}
+OllamaChat.EnvCommentRecentEvent = You just saw this happen: {event_text}. React to it.|Something you witnessed: {event_text}. Comment on it naturally.|Bring up what just happened: {event_text}.|You are still thinking about this: {event_text}. Say something about it.
+
+# OllamaChat.EnvCommentNamedNpc
+#   Description: A pipe-separated (|) list of template messages for when a named NPC is standing nearby.
+#   Placeholders (named): {npc_name} {npc_role}
+OllamaChat.EnvCommentNamedNpc = {npc_name} the {npc_role} is standing nearby. Say something about them.|You see {npc_name}, a {npc_role}. Remark on what they offer.|Mention {npc_name} the {npc_role} and whether they are worth visiting.
+
+# OllamaChat.EnvCommentZoneLandmark
+#   Description: A pipe-separated (|) list of template messages for when the bot remarks on where it is.
+#   Placeholders (named): {area_name} {zone_name}
+OllamaChat.EnvCommentZoneLandmark = You are in {area_name}, part of {zone_name}. Say something about this place.|Remark on the look or feel of {area_name}.|Comment on what {zone_name} is known for.|Say whether {area_name} is worth lingering in.
+
+# OllamaChat.EnvCommentTimeOfDay
+#   Description: A pipe-separated (|) list of template messages for when the bot remarks on the hour.
+#   Placeholders (named): {time_of_day}
+OllamaChat.EnvCommentTimeOfDay = It is {time_of_day}. Remark on the hour.|Comment on it being {time_of_day} and what that means for travelling.|Mention that it is {time_of_day} and how you feel about it.
+
+# OllamaChat.EnvCommentCorpse
+#   Description: A pipe-separated (|) list of template messages for when a corpse is on the ground nearby.
+#   Placeholders (named): {creature_name}
+OllamaChat.EnvCommentCorpse = There is a dead {creature_name} on the ground here. React to it.|You see the corpse of a {creature_name}. Say something about the fight that happened.|Remark on the slain {creature_name} nearby.
+
+# OllamaChat.EnvCommentDanger
+#   Description: A pipe-separated (|) list of template messages for when a nearby creature outlevels the bot.
+#   Placeholders (named): {creature_name} {level_delta}
+OllamaChat.EnvCommentDanger = A {creature_name} is nearby and it is {level_delta} levels above you. Warn or brag.|The {creature_name} here looks dangerous. Say whether you would take it on.|Comment on the threat the {creature_name} poses.
+
+# OllamaChat.EnvCommentQuestObjective
+#   Description: A pipe-separated (|) list of template messages for when the bot is partway through a quest.
+#   Placeholders (named): {quest_name} {objective}
+OllamaChat.EnvCommentQuestObjective = You are partway through '{quest_name}' and still need to {objective}. Mention it.|Talk about your task '{quest_name}' and what is left: {objective}.|Bring up '{quest_name}' and ask for help or advice with it.|Complain or enthuse about '{quest_name}'.
+
+# OllamaChat.EnvCommentGroupNeed
+#   Description: A pipe-separated (|) list of template messages for when a group member needs something.
+#   Placeholders (named): {member_name} {need}
+OllamaChat.EnvCommentGroupNeed = {member_name} is {need}. Say something useful about it.|Point out that {member_name} is {need}.|React to {member_name} being {need}.
+
+# OllamaChat.Roleplay.PromptVariations
+#   Description: A pipe-separated (|) list of template messages for when roleplay-mode statement prompts, replacing the shipped random-chatter list at Roleplay.Strictness 2.
+#   Placeholders (named): none
+OllamaChat.Roleplay.PromptVariations = Remark on the weather or the road ahead.|Mention a rumour you heard in the last town.|Say something about the war and what it has cost.|Complain about the price of supplies.|Speak of someone you have lost.|Mention where you are headed and why.|Say something about your faith or what you believe in.|Comment on the state of the land here.|Talk about a beast or enemy you have fought recently.|Mention hunger, thirst, or how long since you last slept.|Say something about your homeland.|Remark on how far you are from anywhere safe.|Speak of an old debt or grudge.|Mention a piece of your gear and where it came from.|Say something about the people passing through here.
+
+# OllamaChat.Roleplay.QuestionVariations
+#   Description: A pipe-separated (|) list of template messages for when roleplay-mode question prompts, used the same way.
+#   Placeholders (named): none
+OllamaChat.Roleplay.QuestionVariations = Ask whether the road ahead is safe.|Ask if anyone has news from the front.|Ask where a person might find work here.|Ask what happened in this place.|Ask whether anyone has seen a particular kind of beast nearby.|Ask where the nearest inn or camp is.|Ask someone where they hail from.|Ask whether the local lord or chieftain is worth trusting.|Ask if anyone needs a hand with something.|Ask what the strangest thing seen around here has been.|Ask whether the water or food here can be trusted.|Ask how long the fighting has been going on.
+
+# --------------------------------------------
+# OPTIONAL PROMPT OVERRIDES
+# --------------------------------------------
+#
+# Leave these EMPTY to use the module’s built-in prompt, which is what
+# almost everyone wants. They are listed only so the core stops warning
+# that the key is missing. Set one to override that prompt entirely.
+
+# OllamaChat.EmoteReactionPromptTemplate
+#   Description: Prompt used when a player emotes at a bot.
+#   Empty = use the built-in default.
+OllamaChat.EmoteReactionPromptTemplate = ""
+
+# OllamaChat.Memory.CondensePrompt
+#   Description: Prompt that distils a bot’s conversation history into long-term memories.
+#   Empty = use the built-in default.
+OllamaChat.Memory.CondensePrompt = ""
+
+# OllamaChat.Memory.PromptTemplate
+#   Description: Wrapper around the memory list injected into a prompt.
+#   Empty = use the built-in default.
+OllamaChat.Memory.PromptTemplate = ""
+
+# OllamaChat.Relationship.PromptTemplate
+#   Description: Wrapper around the relationship list injected into a prompt.
+#   Empty = use the built-in default.
+OllamaChat.Relationship.PromptTemplate = ""
+
+# OllamaChat.Relationship.UpdatePrompt
+#   Description: Prompt that rewrites how a bot feels about someone.
+#   Empty = use the built-in default.
+OllamaChat.Relationship.UpdatePrompt = ""
+
+# --------------------------------------------
+# OPTIONAL SAMPLING PENALTIES
+# --------------------------------------------
+#
+# -1000 is a sentinel meaning "do not send this parameter at all", so the
+# model’s own default applies. Set a real value (typically 0.0 to 2.0) only
+# if you know you want it.
+
+# OllamaChat.PresencePenalty
+#   Description: Discourages tokens that already appeared. -1000 = omit the parameter.
+#   Default: -1000
+OllamaChat.PresencePenalty = -1000
+
+# OllamaChat.FrequencyPenalty
+#   Description: Discourages tokens by how often they appeared. -1000 = omit the parameter.
+#   Default: -1000
+OllamaChat.FrequencyPenalty = -1000
+
